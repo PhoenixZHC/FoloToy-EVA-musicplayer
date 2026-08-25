@@ -1,202 +1,160 @@
-# FoloToy AI Passport
+# FoloToy EVA Music Player
 
-English | [简体中文](README.zh_CN.md)
+[简体中文](README.zh_CN.md) | English
 
-FoloToy AI Passport is open wearable AI hardware designed for AI agents. This repository is the development baseline for the device. It goes beyond showing “what the board can run” by keeping the **hardware facts, stable interfaces, resource boundaries, reference implementations, and validation methods** that an agent needs to build applications in one place.
+This repository contains an ESP-IDF firmware project for the FoloToy AI Passport. The current application boots directly into a fixed, offline EVA-style music player for the 240 x 320 display and the three physical buttons.
 
-The repository is organized around the following principles:
+It started from the FoloToy AI Passport hardware baseline, but this checkout is now an application project, not only a hardware demo.
 
-- `main` is the smallest complete runnable baseline and an executable description of the current hardware capabilities.
-- `components/bsp` isolates board-level details and exposes stable APIs to applications.
-- `demo/*` branches show different paths from a product requirement to a working implementation.
-- `AGENTS.md` defines how an agent should work in the repository, while `docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md` contains the complete hardware context and troubleshooting knowledge.
-- Build results and physical-device results are reported separately. A successful build must never be presented as successful hardware validation.
+## What It Does
 
-The intended workflow is simple: give an agent this repository and an application requirement. The agent identifies the available capabilities and constraints, selects relevant examples, implements and builds the application, and returns an acceptance checklist that can be executed on the physical device.
+- Shows a black startup screen with a centered red NERV-style logo for 3 seconds.
+- Opens a front-facing EVA-inspired player UI.
+- Starts in the stopped state. It does not play music automatically after boot.
+- Plays a fixed local playlist from embedded compressed audio.
+- Uses `OK` to play and pause.
+- Uses `UP` to highlight `PREV`, then switches to the previous track on release.
+- Uses `DOWN` to highlight `NEXT`, then switches to the next track on release.
+- Freezes at the end of a track for 2 seconds, then automatically plays the next track.
+- Scrolls long track titles from right to left like a marquee.
 
-## Entry point for AI agents
+Current display titles:
 
-Before starting development, establish context in this order:
+- `残酷な天使のテーゼ`
+- `One Last Kiss`
+- `Beautiful World`
 
-1. Read `AGENTS.md`, this README, and [`docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md`](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md).
-2. Run `git status --short --branch` and preserve all existing user changes.
-3. Read the affected `components/bsp/include/*.h` headers and their implementations. Do not infer board behavior from common chip or development-board configurations.
-4. Use `git branch -r --list 'origin/demo/*'` to find examples close to the requirement. Reuse only the relevant design patterns; do not merge an entire demo branch by default.
-5. Break the requirement into inputs, outputs, state, concurrent tasks, persistence, memory budget, and failure degradation before deciding whether to change `main` or extend `components/bsp`.
-6. Complete the minimum build check and all applicable logic tests. Keep explicit on-device acceptance items for every conclusion that depends on the display, buttons, audio, battery, or timing.
+The original fourth candidate track was removed to keep the firmware within the 8 MB Flash budget.
 
-### Source-of-truth priority
+## Important Asset Notice
 
-When information conflicts, use this priority order:
+This repository is intended for source-code sharing. Do not publish copyrighted songs, extracted music, or generated firmware images that contain protected assets unless you have the required rights.
 
-```text
-Schematic / PCB / board revision / physical measurement
-    > components/bsp/include/bsp_pins.h
-    > BSP public headers and implementations
-    > docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md
-    > README and example applications
-```
+The source code is MIT licensed. Music, trademarks, character names, fonts, logos, and other third-party assets are not included in that license. See [NOTICE.md](NOTICE.md).
 
-The repository does not currently include schematic or PCB source files. When the board revision, wiring, polarity, register behavior, or unused GPIOs are unknown, an agent must report the unknown and request evidence instead of filling the gap with parameters from another ESP32-C3 board.
+For an open-source release, keep these files local unless you can legally redistribute them:
 
-## Hardware capability contract
+- source music files such as `.mp3`, `.wav`, `.flac`, or `.m4a`
+- generated compressed audio under `assets/audio/*.adpcm`
+- merged firmware images under `release/*.bin`
 
-The table below describes the application capabilities implemented by the current `main` branch. It is not a list of everything that might be possible according to the chip datasheet.
+Generated image assets used by the UI are part of the source release for this project. See [docs/ASSET_PREPARATION.md](docs/ASSET_PREPARATION.md) and [docs/GIT_RULES.md](docs/GIT_RULES.md).
 
-| Capability | Confirmed implementation | Application interface | Boundaries that must be respected |
-| --- | --- | --- | --- |
-| Display | ST7789P3, 240 × 320 portrait RGB565, SPI2 at 40 MHz; LEDC backlight | `bsp_display_*`, `bsp_lvgl_*` | The ESP32-C3 has no PSRAM; the current design uses a small single DMA buffer; no LCD MISO, touch, or known TE interface |
-| Input | `UP`, `DOWN`, and `OK` share an ADC resistor ladder on GPIO0 | `bsp_button_init()`, `bsp_button_read_mv()` | Callbacks run in the button component task and must not block; do not create a second ADC1 unit |
-| Audio | ES8311 with full-duplex PCM over I2S0, supporting playback and microphone capture | `bsp_audio_*` | PCM reads and writes block and belong in a worker task; format changes must retain the BSP close/open sequence |
-| Battery | CW2017 state-of-charge and voltage readings | `bsp_battery_*` | This capability is optional at runtime; accuracy depends on the cell and battery profile and is not equivalent to a calibrated result |
-| Shared bus | ES8311 and CW2017 share I2C0 | `bsp_i2c_*` | Every device must reuse the bus owned by the BSP; do not create another bus on the same port for scanning or a new device |
-| Logging and flashing | Native ESP32-C3 USB Serial/JTAG | ESP-IDF console | GPIO18/19 are reserved for USB; the default UART0 TX on GPIO21 conflicts with the backlight |
+## Hardware Target
 
-All pins, addresses, panel parameters, and button voltage windows are defined only in [`components/bsp/include/bsp_pins.h`](components/bsp/include/bsp_pins.h). Application code must not duplicate these constants. See the [AI Hardware Development Guide](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md) for the complete pin map, panel initialization, ADC thresholds, I2C addressing rules, audio clocks, and memory details.
+| Item | Current value |
+| --- | --- |
+| Board | FoloToy AI Passport |
+| MCU | ESP32-C3 |
+| Flash | 8 MB |
+| PSRAM | None |
+| Display | ST7789P3, 240 x 320, RGB565, portrait |
+| Buttons | `UP`, `DOWN`, `OK` on one ADC resistor ladder |
+| Audio | ES8311 over I2S0 |
+| Battery gauge | CW2017 on shared I2C0, optional at runtime |
+| Console | Native USB Serial/JTAG |
 
-Applications may also use ESP-IDF timers, FreeRTOS tasks, and internal Flash/NVS; the Pomodoro branch contains an NVS example. The ESP32-C3 supports 2.4 GHz Wi-Fi and Bluetooth LE, but the current BSP does not wrap either radio and `main` does not initialize a wireless stack. `demo/claude-buddy-port` is a BLE application architecture reference, not a substitute for measuring the current board's antenna, RF performance, power consumption, and coexistence behavior. Every FoloToy AI Passport has 8 MB of Flash, and the default firmware configuration targets 8 MB.
+Detailed pin, display, audio, button, battery, and memory notes are in [docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md).
 
-### Capabilities outside the current contract
-
-The repository does not currently provide enough evidence to guarantee touch input, display readback, an IMU, external storage, charging control, USB insertion detection, controllable power-amplifier enable, deep-sleep wakeup, arbitrary “free GPIOs,” exact battery capacity, or production-grade power specifications. A capability being present in the ESP32-C3 silicon does not mean that it is connected, powered correctly, or validated on this board.
-
-Requirements involving these capabilities must begin with a schematic, board revision, component documentation, or physical measurements. Only then should the BSP and its acceptance criteria be extended.
-
-## Start development with one requirement
-
-A simple request can be given directly to an agent:
+## Project Layout
 
 ```text
-On the main branch, build an offline habit-tracking application for FoloToy AI Passport.
-Use the three physical buttons and the 240×320 display, and preserve records across power loss.
-Follow AGENTS.md and AI_HARDWARE_DEVELOPMENT_GUIDE.md. Inspect relevant demo branches first,
-keep hardware logic in components/bsp and application logic in main, deliver a runnable
-implementation with tests, and report the build result, unexecuted device checks, and exact
-on-device acceptance steps separately.
+components/bsp/       Board support package: display, buttons, audio, battery, I2C
+main/                 EVA player application, generated UI assets, playback model
+assets/audio/         Local generated ADPCM audio files, not for public release
+tools/                Asset conversion and inspection scripts
+tests/                Host-side logic and asset validation tests
+docs/                 Hardware, architecture, asset, and release documentation
+partitions.csv        8 MB Flash partition layout with a 4 MB factory app slot
+sdkconfig.defaults    ESP32-C3, USB console, LVGL, Flash, and partition defaults
 ```
 
-The more specific the requirement, the more likely the agent is to implement it correctly in one pass. Useful details include:
+The main architecture is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-- User flow: what each page displays and what short press, double press, and long press do for each button.
-- State and data: whether the application needs timing, persistence across power loss, networking, recording, or communication with a computer.
-- Experience goals: fonts, colors, animation, sound, response time, and error states.
-- Constraints: whether the main menu may be replaced, dependencies added, Flash used, or default interactions changed.
-- Acceptance criteria: which behaviors require automated tests and which must be observed on real hardware.
+## Build
 
-When details are omitted, an agent may choose conservative defaults that do not change the product direction, but it must list those assumptions in the delivery. Decisions involving new wiring, electrical safety, board revisions, or irreversible data formats require confirmation first.
+Use ESP-IDF 5.5.x. The firmware has been developed with ESP-IDF 5.5.3.
 
-## Demo branches are design cases, not a feature pile
-
-Each `demo/*` branch evolves the baseline into an independent application. The branches demonstrate how specific problems were solved. New applications should normally branch from `main` and consult relevant examples instead of merging multiple demos wholesale.
-
-| Branch | Application | Patterns worth reusing |
-| --- | --- | --- |
-| `demo/stopwatch` | Stopwatch | Minimal timer application, separation of pure logic from LVGL, host-side logic tests |
-| `demo/cat-themed-pomodoro-timer` | Cat-themed Pomodoro timer | Monotonic time, pause/resume, NVS persistence, a detailed PRD, and a state model |
-| `demo/rock-paper-scissors` | Rock paper scissors | RGB565 image assets, asset-generation scripts, and Flash resource tradeoffs |
-| `demo/tetris-game` | Three-button Tetris | Real-time game loop, low-latency `PRESS` input, partial refresh, a pure game model, audio, and microphone interaction |
-| `demo/claude-buddy-port` | Desktop AI hardware companion | Replacing the demo menu with a complete application, encrypted BLE, protocol parsing, state reduction, task communication, and extensive host tests |
-
-Inspect an example without switching the current working tree:
-
-```bash
-git branch -r --list 'origin/demo/*'
-git diff main...origin/demo/tetris-game -- main components tests
-git show origin/demo/tetris-game:main/demo_tetris.c
-```
-
-Start a new application:
-
-```bash
-git switch main
-git switch -c feature/my-passport-app
-```
-
-Example branches may change the same menu, configuration, or driver in incompatible ways. An agent must understand the differences before extracting a state model, asset pipeline, or concurrency pattern. Code appearing in an example branch is not automatically part of the current `main` BSP contract.
-
-## Application and BSP boundary
-
-```text
-Natural-language requirement
-  └─ main/                         Pages, state machines, animation, app tasks, assets
-      └─ components/bsp/include/  Stable board-level APIs
-          └─ components/bsp/src/  GPIO, buses, devices, and driver details
-              └─ bsp_pins.h       Single source of truth for pins and hardware parameters
-```
-
-To add a regular page, create `main/demo_<feature>.c` and implement the `enter`, `exit`, and `key` interface, then update:
-
-- Declarations in `main/demo.h`.
-- The source list in `main/CMakeLists.txt`.
-- The `DEMOS[]` registration in `main/main.c`.
-- Menu initialization status and failure degradation if a new optional peripheral is involved.
-
-Only hardware capabilities shared by multiple applications belong in `components/bsp`. A BSP API must document blocking behavior, thread context, memory ownership, failure values, and initialization order. Pins and I2C addresses belong only in `bsp_pins.h`.
-
-### Runtime invariants
-
-- LVGL is not thread-safe. Code outside the LVGL context must hold `bsp_lvgl_lock()` while accessing `lv_*` objects.
-- Button callbacks only dispatch lightweight events. Recording, playback, storage, and other slow operations belong in worker tasks.
-- When leaving a page, stop every task or timer that may access its UI before deleting the screen and clearing object pointers.
-- The default global interaction is `UP`/`DOWN` navigation in the menu, short `OK` to enter, and long `OK` to return from a page. Any change must be explicit.
-- New images, fonts, network stacks, audio buffers, LVGL buffers, and task stacks must be evaluated against internal RAM. Sufficient total free heap does not guarantee a sufficiently large contiguous block.
-- Testable state machines, protocols, timing, and layout calculations should be separated from ESP-IDF/LVGL and covered by host-side logic tests.
-
-## Build and run baseline
-
-The project uses ESP-IDF 5.5.x; the known development environment is 5.5.3:
-
-```bash
-get_idf553                    # Maintainer-local helper
-# Or source "$HOME/esp/esp-idf-v5.5.3/export.sh" (example installation path)
-idf.py set-target esp32c3     # Run for a fresh checkout or after using another target
+```powershell
+idf.py set-target esp32c3
 idf.py build
-idf.py flash monitor
 ```
 
-The first build uses ESP-IDF Component Manager to fetch LVGL, `esp_lvgl_port`, `button`, `esp_codec_dev`, and other dependencies. Do not edit the generated `managed_components/` directory. If configuration state is stale, use `idf.py fullclean` and configure again, but never use it to clean user source changes.
-
-The current baseline includes a pure-logic test that can run independently:
-
-```bash
-cc -std=c11 -Wall -Wextra -Werror -Imain \
-  tests/test_ui_pixel_math.c main/ui_pixel_math.c \
-  -o /tmp/test_ui_pixel_math
-/tmp/test_ui_pixel_math
-```
-
-Different example branches may provide their own host-test commands; follow the README on that branch.
-
-## Acceptance and delivery format
-
-`idf.py build` is the minimum automated check, not hardware validation. For changes involving physical peripherals, record at least the following on a FoloToy AI Passport:
-
-- USB Serial/JTAG produces stable startup logs with no reboot loop, assertion, or watchdog reset.
-- Display orientation, colors, edges, refresh behavior, and backlight are correct.
-- `UP`, `DOWN`, and `OK` produce the intended events, and long `OK` returns correctly.
-- Audio sample rate, playback, non-zero recording, and page exit behavior are correct.
-- Battery readings are plausible, and the application degrades safely when the CW2017 is absent.
-- Repeated page transitions and concurrent operations do not continuously leak tasks, objects, or heap.
-
-An agent's final delivery must distinguish these outcomes:
+On a fresh public checkout, the build requires locally generated audio and logo assets first. The expected generated audio files are:
 
 ```text
-Build: PASS / FAIL / NOT RUN
-Host tests: PASS / FAIL / NOT RUN
-Device tests: PASS / FAIL / NOT RUN
-Unverified: items that still require a board, instrument, or user confirmation
+assets/audio/track0.adpcm
+assets/audio/track1.adpcm
+assets/audio/track2.adpcm
 ```
 
-See the [AI Hardware Development Guide](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md) for the acceptance matrix by change type—including pins, LCD, ADC, codec, I2C, and DMA—and the troubleshooting reference.
+If these files are missing, prepare your own legally usable tracks and follow [docs/ASSET_PREPARATION.md](docs/ASSET_PREPARATION.md).
 
-## Project structure
+## Flash
+
+Flash the connected board with ESP-IDF:
+
+```powershell
+idf.py -p COM13 flash monitor
+```
+
+Use the actual port shown on your computer. `COM13` is only the last verified local device port.
+
+## Full Firmware Image
+
+A merged full image can be created after a successful build by combining:
+
+| Offset | File |
+| ---: | --- |
+| `0x0` | `build/bootloader/bootloader.bin` |
+| `0x8000` | `build/partition_table/partition-table.bin` |
+| `0x10000` | `build/Folotoy_EVA_player.bin` |
+
+The previously verified local image was named:
 
 ```text
-components/bsp/include/  Public BSP APIs and bsp_pins.h hardware facts
-components/bsp/src/      Display, button, audio, battery, and shared-I2C implementations
-main/                    Minimal menu, LVGL UI, and independent hardware demo pages
-tests/                   Lightweight logic tests that can run without hardware
-docs/                    Agent hardware development guide and extension documentation
-sdkconfig.defaults       ESP32-C3, USB console, Flash, and LVGL defaults
-AGENTS.md                Coding, validation, and contribution rules for agents
+release/FoloToy-EVA-music-player-full.bin
 ```
+
+Do not publish a merged image if it embeds copyrighted audio or an official logo image.
+
+## Tests
+
+The project has host-side tests for the pure player model, ADPCM decoding, clock formatting, title layout, generated text assets, logo conversion, and RGB565 color output.
+
+Recommended checks before release:
+
+```powershell
+$env:PYTHONPATH = "tools"
+py -m pytest tests
+```
+
+The C host tests are plain C programs. Build them with a local C compiler and run the produced executables:
+
+```powershell
+cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_player_model.c main/eva_player_model.c -o build_test_eva_player_model.exe
+cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_adpcm.c main/eva_adpcm.c -o build_test_eva_adpcm.exe
+cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_clock.c main/eva_clock.c -o build_test_eva_clock.exe
+cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_track_layout.c main/eva_track_layout.c -o build_test_eva_track_layout.exe
+cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_ui_pixel_math.c main/ui_pixel_math.c -o build_test_ui_pixel_math.exe
+```
+
+An ESP-IDF build proves the firmware compiles. It does not replace hardware testing on the actual device.
+
+## Current Verified Behavior
+
+The last verified local firmware did the following on a FoloToy AI Passport:
+
+- booted without a reboot loop
+- showed a red NERV-style logo on a black background
+- entered the player without autoplay
+- played the three embedded tracks
+- kept button highlight states in sync with play, pause, previous, and next actions
+- reduced output volume to avoid obvious small-speaker distortion
+- held the exact end timestamp for about 2 seconds, then advanced to the next track
+
+The app image was close to the 4 MB application partition limit, so new assets should be reviewed carefully.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/GIT_RULES.md](docs/GIT_RULES.md). Keep hardware facts in `components/bsp`, keep application state testable, and keep redistributable source separate from local media assets.

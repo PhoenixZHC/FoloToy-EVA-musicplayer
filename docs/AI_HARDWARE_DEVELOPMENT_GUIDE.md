@@ -64,14 +64,14 @@ app_main
   ├─ bsp_button_init(on_key)
   ├─ bsp_audio_init
   ├─ bsp_battery_init
-  └─ LVGL menu
-       ├─ Display demo
-       ├─ Button demo
-       ├─ Audio demo
-       └─ Battery demo
+  └─ EVA music player
+       ├─ 3 秒黑底红色 NERV 风格启动页
+       ├─ 固定三首歌播放界面
+       ├─ UP / DOWN / OK 三键控制
+       └─ ADPCM 音频工作任务
 ```
 
-显示是 UI 的硬依赖，显示或 LVGL 初始化失败时 `app_main` 直接返回。按键、音频、电池是软依赖：初始化失败的菜单项显示 `[FAIL]`，其他页面仍可用。
+显示是 UI 的硬依赖，显示或 LVGL 初始化失败时 `app_main` 直接返回。按键和音频是播放器的关键依赖；电池是软依赖，读取失败不应导致播放器退出。旧 `demo_*.c` 文件仍可作为 BSP 验证参考，但当前主程序不再显示 demo 菜单。
 
 公开 BSP API 位于 `components/bsp/include/`：
 
@@ -170,7 +170,9 @@ MCU 是 I2S master，ES8311 是 slave；I2S0 的 TX/RX 全双工通道共享 MCL
 - `bsp_audio_read/write` 是阻塞调用，不能放在按键回调或 LVGL 任务中。
 - I2S DMA 当前为 6 个 descriptor、每个 240 frame。更改 DMA 或 LVGL buffer 前必须联合评估内部 RAM。
 
-Audio demo 使用独立 4 KB 栈任务：OK 播放 1 秒 1 kHz 方波，UP 录 3 秒再回放。录音缓冲约 96 KB，是当前最显著的瞬时堆分配，可能因碎片或其他功能增大而失败。新增长录音应优先采用分块流式处理或外部存储，不可假设存在 PSRAM。
+旧 Audio demo 使用独立 4 KB 栈任务：OK 播放 1 秒 1 kHz 方波，UP 录 3 秒再回放。该文件现在主要作为 BSP 音频参考。当前 EVA 播放器使用内嵌 8 kHz 单声道 4-bit ADPCM 音频和播放工作任务，不做录音。
+
+录音缓冲约 96 KB，是旧 demo 中最显著的瞬时堆分配，可能因碎片或其他功能增大而失败。新增长录音应优先采用分块流式处理或外部存储，不可假设存在 PSRAM。
 
 当前 demo 的退出会直接删除音频任务。如果任务正阻塞于 codec 读写，实际硬件上需特别验证退出行为；若扩展为生产逻辑，应设计可取消的分块循环与明确的任务退出握手。
 
@@ -349,7 +351,7 @@ idf.py build
 | 能烧录但无日志 | 确认 USB Serial/JTAG 配置和正确端口，不要默认改用 GPIO21 UART TX |
 | 构建目录来自其他 IDF | 激活 5.5.3 后 `idf.py fullclean`，再 set-target/build |
 
-环境验收标准是：`idf.py --version` 正确、`idf.py build` 无错误、设备可烧录、monitor 能看到 `FoloToy AI Passport BSP demo 启动`，并且启动后没有持续重启或 assert。
+环境验收标准是：`idf.py --version` 正确、`idf.py build` 无错误、设备可烧录、monitor 能看到播放器启动日志，并且启动后没有持续重启或 assert。
 
 ## 13. 构建与验证
 
@@ -364,15 +366,16 @@ idf.py flash monitor
 
 配置陈旧时可执行 `idf.py fullclean`，但这会删除生成的 build 状态；不要用它处理源码工作区问题。
 
-仓库有 `tests/test_ui_pixel_math.c` 轻量逻辑测试源，但当前根 CMake 是 ESP-IDF 工程，未提供统一的 host test 命令。因此 `idf.py build` 是最低自动检查，硬件变更必须上板。
+仓库有播放器状态、ADPCM、时钟、歌名布局、像素计算和素材生成相关的主机测试。`idf.py build` 仍是最低固件构建检查，硬件变更必须上板。
 
 ### 通用上板验收
 
 - USB Serial/JTAG 有稳定启动日志，无重启循环、assert、watchdog 和持续错误。
 - I2C 扫描看到预期的 0x18；装有 CW2017 的板还应看到 0x63。
-- 菜单可用 UP/DOWN 循环导航，OK 单击进入，OK 长按返回。
-- 某个可选外设故障只禁用对应页面，不影响其他功能。
-- 连续切换页面和反复操作后无堆持续下降、对象悬挂或任务泄漏。
+- 开机 3 秒启动页后进入播放器，默认停止播放。
+- `OK` 可播放/暂停，`UP`/`DOWN` 可上一首/下一首。
+- 一首歌播完后停留约 2 秒，再自动播放下一首。
+- 反复播放、暂停和切歌后无堆持续下降、对象悬挂或任务泄漏。
 
 ### 按修改类型追加验收
 

@@ -1,5 +1,13 @@
 idf_component_register(
     SRCS "main.c"
+         "eva_player.c"
+         "eva_player_model.c"
+         "eva_adpcm.c"
+         "eva_clock.c"
+         "eva_track_layout.c"
+         "eva_logo_assets.c"
+         "eva_text_assets.c"
+         "eva_text_buttons.c"
          "ui_pixel.c"
          "ui_pixel_math.c"
          "demo_display.c"
@@ -8,4 +16,7 @@ idf_component_register(
          "demo_battery.c"
     INCLUDE_DIRS "."
     REQUIRES bsp
+    EMBED_FILES "../assets/audio/track0.adpcm"
+                "../assets/audio/track1.adpcm"
+                "../assets/audio/track2.adpcm"
 )

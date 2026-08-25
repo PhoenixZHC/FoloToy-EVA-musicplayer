@@ -17,9 +17,17 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
-# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 本 demo UI 简单,24KB 足够;若自建复杂界面出现绘制卡死/看门狗,调大此值。
-CONFIG_LV_MEM_SIZE_KILOBYTES=24
+# 只使用本项目界面,不编 LVGL 自带示例。
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# LVGL 内置 malloc 池大小(KB)。EVA 播放器界面用大量 lv_obj 充当色块,对象+样式
+# +子对象数组的峰值远超 24KB(实测 24KB 在创建约第 14 个对象时耗尽,lv_realloc
+# 返回 NULL 后被解引用,写 NULL+偏移导致 Store access fault 崩溃)。96KB 留有合理余量。
+CONFIG_LV_MEM_SIZE_KILOBYTES=96
+
+# --- 分区表 ---
+# 应用内嵌约 3.25MB ADPCM 音频,默认单 app 的 1MB factory 分区放不下,改用自定义大分区。
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000

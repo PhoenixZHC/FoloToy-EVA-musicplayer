@@ -4,3 +4,43 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 .vscode/
+build_test_*.exe
+__pycache__/
+
+# Editor and local OS state
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Python test/cache output
+.pytest_cache/
+*.pyc
+
+# Host test executables and compiler output
+build_test_*
+*.o
+*.obj
+*.exe
+
+# Local project notes created during agent work
+CONTEXT.md
+docs/superpowers/
+
+# Local source media. Do not publish copyrighted songs.
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.aac
+*.ogg
+
+# Generated embedded audio. Users should create these locally.
+assets/audio/*.adpcm
+assets/audio/*.wav
+!assets/audio/README.md
+
+# Firmware images can embed protected audio/logo assets.
+release/
+*.bin

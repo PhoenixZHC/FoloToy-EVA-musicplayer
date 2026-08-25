@@ -1,0 +1,148 @@
+#include "eva_player_model.h"
+
+#define AUTO_ADVANCE_DELAY_MS 2000U
+
+static const eva_player_track_t TRACKS[] = {
+    { "残酷な天使のテーゼ" },
+    { "One Last Kiss" },
+    { "Beautiful World" },
+};
+
+static eva_player_control_t playback_control(const eva_player_model_t *model)
+{
+    return model->playing ? EVA_PLAYER_CONTROL_PLAY : EVA_PLAYER_CONTROL_PAUSE;
+}
+
+void eva_player_init(eva_player_model_t *model)
+{
+    model->track_index = 0;
+    model->playing = false;
+    model->auto_advance_pending = false;
+    model->active_control = EVA_PLAYER_CONTROL_PAUSE;
+    model->elapsed_ms = 0;
+    model->auto_advance_at_ms = 0;
+}
+
+void eva_player_handle_key(eva_player_model_t *model, eva_player_key_t key,
+                           eva_player_key_event_t event)
+{
+    if (model->auto_advance_pending) {
+        if (event == EVA_PLAYER_KEY_CLICK && key == EVA_PLAYER_KEY_OK) {
+            eva_player_advance_after_finish(model);
+            return;
+        }
+        if (key == EVA_PLAYER_KEY_UP || key == EVA_PLAYER_KEY_DOWN) {
+            model->auto_advance_pending = false;
+        }
+    }
+
+    if (event == EVA_PLAYER_KEY_PRESS) {
+        if (key == EVA_PLAYER_KEY_UP) {
+            model->active_control = EVA_PLAYER_CONTROL_PREV;
+        } else if (key == EVA_PLAYER_KEY_DOWN) {
+            model->active_control = EVA_PLAYER_CONTROL_NEXT;
+        }
+        return;
+    }
+
+    if (event != EVA_PLAYER_KEY_CLICK) {
+        return;
+    }
+
+    if (key == EVA_PLAYER_KEY_OK) {
+        model->playing = !model->playing;
+        model->active_control = playback_control(model);
+        return;
+    }
+
+    if (key == EVA_PLAYER_KEY_UP) {
+        model->track_index = (model->track_index + eva_player_track_count() - 1U) %
+                             eva_player_track_count();
+        model->elapsed_ms = 0;
+        model->active_control = playback_control(model);
+        return;
+    }
+
+    if (key == EVA_PLAYER_KEY_DOWN) {
+        model->track_index = (model->track_index + 1U) % eva_player_track_count();
+        model->elapsed_ms = 0;
+        model->active_control = playback_control(model);
+    }
+}
+
+void eva_player_stop(eva_player_model_t *model)
+{
+    model->playing = false;
+    model->auto_advance_pending = false;
+    model->active_control = EVA_PLAYER_CONTROL_PAUSE;
+}
+
+void eva_player_finish_track(eva_player_model_t *model, uint32_t duration_ms,
+                             uint32_t now_ms)
+{
+    model->playing = false;
+    model->auto_advance_pending = true;
+    model->active_control = EVA_PLAYER_CONTROL_PAUSE;
+    model->elapsed_ms = duration_ms;
+    model->auto_advance_at_ms = now_ms + AUTO_ADVANCE_DELAY_MS;
+}
+
+bool eva_player_auto_advance_pending(const eva_player_model_t *model)
+{
+    return model->auto_advance_pending;
+}
+
+bool eva_player_auto_advance_due(const eva_player_model_t *model, uint32_t now_ms)
+{
+    return model->auto_advance_pending &&
+           (int32_t)(now_ms - model->auto_advance_at_ms) >= 0;
+}
+
+void eva_player_advance_after_finish(eva_player_model_t *model)
+{
+    model->track_index = (model->track_index + 1U) % eva_player_track_count();
+    model->playing = true;
+    model->auto_advance_pending = false;
+    model->active_control = EVA_PLAYER_CONTROL_PLAY;
+    model->elapsed_ms = 0;
+}
+
+void eva_player_set_elapsed_ms(eva_player_model_t *model, uint32_t elapsed_ms)
+{
+    model->elapsed_ms = elapsed_ms;
+}
+
+uint32_t eva_player_elapsed_ms(const eva_player_model_t *model)
+{
+    return model->elapsed_ms;
+}
+
+size_t eva_player_track_index(const eva_player_model_t *model)
+{
+    return model->track_index;
+}
+
+bool eva_player_is_playing(const eva_player_model_t *model)
+{
+    return model->playing;
+}
+
+eva_player_control_t eva_player_active_control(const eva_player_model_t *model)
+{
+    return model->active_control;
+}
+
+const eva_player_track_t *eva_player_current_track(const eva_player_model_t *model)
+{
+    return eva_player_track_at(model->track_index);
+}
+
+const eva_player_track_t *eva_player_track_at(size_t index)
+{
+    return index < eva_player_track_count() ? &TRACKS[index] : NULL;
+}
+
+size_t eva_player_track_count(void)
+{
+    return sizeof(TRACKS) / sizeof(TRACKS[0]);
+}
