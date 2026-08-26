@@ -49,6 +49,12 @@ The local project name used for the verified binary was:
 FoloToy-EVA-music-player-full.bin
 ```
 
+The `1.1.0` full firmware image is:
+
+```text
+FoloToy-EVA-music-player-full-v1.1.0.bin
+```
+
 ## Hardware Release Notes
 
 When publishing a tested firmware version, include:

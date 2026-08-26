@@ -30,6 +30,7 @@ static const char *TAG = "eva_player";
 
 static lv_obj_t *s_scr;
 static lv_obj_t *s_boot_scr;
+static lv_obj_t *s_standby_scr;
 static lv_obj_t *s_clock;
 static lv_obj_t *s_track_image;
 static lv_obj_t *s_track_image_follow;
@@ -78,6 +79,7 @@ static const audio_asset_t AUDIO_ASSETS[] = {
 };
 
 static void audio_task(void *arg);
+static void sync_standby_screen(void);
 
 static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int w, int h,
                        uint32_t bg, uint32_t border)
@@ -237,6 +239,9 @@ static void ui_tick(lv_timer_t *timer)
         state_changed = true;
     }
     state_changed = sync_audio_snapshot() || state_changed;
+    sync_standby_screen();
+    if (eva_player_is_standby(&s_model)) return;
+
     if (eva_player_is_playing(&s_model)) {
         eva_player_set_elapsed_ms(&s_model, eva_player_elapsed_ms(&s_model) + delta);
     }
@@ -255,6 +260,20 @@ static void make_button(lv_obj_t *parent, int index, const lv_image_dsc_t *icon,
     lv_obj_set_style_image_recolor(img, lv_color_hex(COLOR_ORANGE), 0);
     lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
     lv_obj_center(img);
+}
+
+static lv_obj_t *create_nerv_logo_screen(void)
+{
+    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(COLOR_BG), 0);
+    lv_obj_set_style_border_width(scr, 0, 0);
+    lv_obj_set_style_pad_all(scr, 0, 0);
+
+    lv_obj_t *logo = lv_image_create(scr);
+    lv_image_set_src(logo, &eva_logo_nerv);
+    lv_obj_center(logo);
+    return scr;
 }
 
 static void build_player_screen(void)
@@ -321,6 +340,34 @@ static void build_player_screen(void)
     lv_screen_load(s_scr);
 }
 
+static void show_standby_screen(void)
+{
+    if (s_standby_scr) return;
+
+    s_standby_scr = create_nerv_logo_screen();
+    lv_screen_load(s_standby_scr);
+}
+
+static void hide_standby_screen(void)
+{
+    if (!s_standby_scr) return;
+
+    lv_obj_t *standby = s_standby_scr;
+    s_standby_scr = NULL;
+    lv_screen_load(s_scr);
+    lv_obj_delete(standby);
+    update_ui();
+}
+
+static void sync_standby_screen(void)
+{
+    if (eva_player_is_standby(&s_model)) {
+        show_standby_screen();
+    } else {
+        hide_standby_screen();
+    }
+}
+
 static void boot_done(lv_timer_t *timer)
 {
     if (timer) {
@@ -337,17 +384,8 @@ static void boot_done(lv_timer_t *timer)
 
 static void build_boot_screen(void)
 {
-    lv_obj_t *boot = lv_obj_create(NULL);
+    lv_obj_t *boot = create_nerv_logo_screen();
     s_boot_scr = boot;
-    lv_obj_remove_flag(boot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(boot, lv_color_hex(COLOR_BG), 0);
-    lv_obj_set_style_border_width(boot, 0, 0);
-    lv_obj_set_style_pad_all(boot, 0, 0);
-
-    lv_obj_t *logo = lv_image_create(boot);
-    lv_image_set_src(logo, &eva_logo_nerv);
-    lv_obj_center(logo);
-
     lv_screen_load(boot);
     s_boot_timer = lv_timer_create(boot_done, 3000, NULL);
 }
@@ -425,6 +463,7 @@ void eva_player_start(bool audio_ready)
     s_audio_ready = audio_ready;
     s_audio_failed = false;
     s_audio_track_finished = false;
+    s_standby_scr = NULL;
     s_ready = false;
     build_boot_screen();
 
@@ -443,14 +482,22 @@ void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)
     eva_player_key_event_t event;
     if (ev == BSP_BTN_PRESS) event = EVA_PLAYER_KEY_PRESS;
     else if (ev == BSP_BTN_CLICK) event = EVA_PLAYER_KEY_CLICK;
+    else if (ev == BSP_BTN_LONG) event = EVA_PLAYER_KEY_LONG;
     else return;
 
     bool was_auto_advance_pending = eva_player_auto_advance_pending(&s_model);
+    bool was_standby = eva_player_is_standby(&s_model);
     eva_player_handle_key(&s_model, key, event);
+    bool is_standby = eva_player_is_standby(&s_model);
     if (was_auto_advance_pending ||
+        was_standby != is_standby ||
         (event == EVA_PLAYER_KEY_CLICK &&
          (key == EVA_PLAYER_KEY_UP || key == EVA_PLAYER_KEY_DOWN))) {
         s_last_tick = lv_tick_get();
     }
-    update_ui();
+    if (was_standby != is_standby) {
+        sync_standby_screen();
+    } else if (!is_standby) {
+        update_ui();
+    }
 }

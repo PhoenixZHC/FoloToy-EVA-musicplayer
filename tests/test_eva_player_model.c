@@ -26,6 +26,93 @@ static void test_ok_toggles_pause_and_play(void)
     assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PAUSE);
 }
 
+static void test_long_ok_while_paused_enters_standby(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model);
+    eva_player_set_elapsed_ms(&model, 42318);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+
+    assert(eva_player_is_standby(&model));
+    assert(!eva_player_is_playing(&model));
+    assert(eva_player_track_index(&model) == 0);
+    assert(eva_player_elapsed_ms(&model) == 42318);
+    assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PAUSE);
+}
+
+static void test_standby_ignores_navigation_and_wakes_paused_on_ok_click(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model);
+    eva_player_set_elapsed_ms(&model, 42318);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_DOWN, EVA_PLAYER_KEY_PRESS);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_DOWN, EVA_PLAYER_KEY_CLICK);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_UP, EVA_PLAYER_KEY_CLICK);
+
+    assert(eva_player_is_standby(&model));
+    assert(eva_player_track_index(&model) == 0);
+    assert(eva_player_elapsed_ms(&model) == 42318);
+    assert(!eva_player_is_playing(&model));
+    assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PAUSE);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_CLICK);
+
+    assert(!eva_player_is_standby(&model));
+    assert(!eva_player_is_playing(&model));
+    assert(eva_player_track_index(&model) == 0);
+    assert(eva_player_elapsed_ms(&model) == 42318);
+    assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PAUSE);
+}
+
+static void test_long_ok_while_playing_does_not_enter_standby(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_CLICK);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+
+    assert(!eva_player_is_standby(&model));
+    assert(eva_player_is_playing(&model));
+    assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PLAY);
+}
+
+static void test_long_ok_during_end_pause_does_not_enter_standby(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_CLICK);
+    eva_player_finish_track(&model, 200000, 1000);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+
+    assert(!eva_player_is_standby(&model));
+    assert(eva_player_auto_advance_pending(&model));
+    assert(!eva_player_is_playing(&model));
+}
+
+static void test_runtime_audio_events_exit_standby(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+
+    eva_player_stop(&model);
+
+    assert(!eva_player_is_standby(&model));
+    assert(!eva_player_is_playing(&model));
+    assert(eva_player_active_control(&model) == EVA_PLAYER_CONTROL_PAUSE);
+
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_LONG);
+    eva_player_finish_track(&model, 200000, 1000);
+
+    assert(!eva_player_is_standby(&model));
+    assert(eva_player_auto_advance_pending(&model));
+}
+
 static void test_up_press_highlights_prev_and_click_switches_previous(void)
 {
     eva_player_model_t model;
@@ -155,6 +242,11 @@ int main(void)
 {
     test_initial_state();
     test_ok_toggles_pause_and_play();
+    test_long_ok_while_paused_enters_standby();
+    test_standby_ignores_navigation_and_wakes_paused_on_ok_click();
+    test_long_ok_while_playing_does_not_enter_standby();
+    test_long_ok_during_end_pause_does_not_enter_standby();
+    test_runtime_audio_events_exit_standby();
     test_up_press_highlights_prev_and_click_switches_previous();
     test_down_press_highlights_next_and_click_switches_next();
     test_switching_while_paused_returns_to_pause_highlight();

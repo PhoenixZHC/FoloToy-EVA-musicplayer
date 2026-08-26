@@ -18,6 +18,7 @@ void eva_player_init(eva_player_model_t *model)
     model->track_index = 0;
     model->playing = false;
     model->auto_advance_pending = false;
+    model->standby = false;
     model->active_control = EVA_PLAYER_CONTROL_PAUSE;
     model->elapsed_ms = 0;
     model->auto_advance_at_ms = 0;
@@ -26,6 +27,13 @@ void eva_player_init(eva_player_model_t *model)
 void eva_player_handle_key(eva_player_model_t *model, eva_player_key_t key,
                            eva_player_key_event_t event)
 {
+    if (model->standby) {
+        if (event == EVA_PLAYER_KEY_CLICK && key == EVA_PLAYER_KEY_OK) {
+            model->standby = false;
+        }
+        return;
+    }
+
     if (model->auto_advance_pending) {
         if (event == EVA_PLAYER_KEY_CLICK && key == EVA_PLAYER_KEY_OK) {
             eva_player_advance_after_finish(model);
@@ -34,6 +42,13 @@ void eva_player_handle_key(eva_player_model_t *model, eva_player_key_t key,
         if (key == EVA_PLAYER_KEY_UP || key == EVA_PLAYER_KEY_DOWN) {
             model->auto_advance_pending = false;
         }
+    }
+
+    if (event == EVA_PLAYER_KEY_LONG) {
+        if (key == EVA_PLAYER_KEY_OK && !model->playing && !model->auto_advance_pending) {
+            model->standby = true;
+        }
+        return;
     }
 
     if (event == EVA_PLAYER_KEY_PRESS) {
@@ -74,6 +89,7 @@ void eva_player_stop(eva_player_model_t *model)
 {
     model->playing = false;
     model->auto_advance_pending = false;
+    model->standby = false;
     model->active_control = EVA_PLAYER_CONTROL_PAUSE;
 }
 
@@ -82,6 +98,7 @@ void eva_player_finish_track(eva_player_model_t *model, uint32_t duration_ms,
 {
     model->playing = false;
     model->auto_advance_pending = true;
+    model->standby = false;
     model->active_control = EVA_PLAYER_CONTROL_PAUSE;
     model->elapsed_ms = duration_ms;
     model->auto_advance_at_ms = now_ms + AUTO_ADVANCE_DELAY_MS;
@@ -103,6 +120,7 @@ void eva_player_advance_after_finish(eva_player_model_t *model)
     model->track_index = (model->track_index + 1U) % eva_player_track_count();
     model->playing = true;
     model->auto_advance_pending = false;
+    model->standby = false;
     model->active_control = EVA_PLAYER_CONTROL_PLAY;
     model->elapsed_ms = 0;
 }
@@ -125,6 +143,11 @@ size_t eva_player_track_index(const eva_player_model_t *model)
 bool eva_player_is_playing(const eva_player_model_t *model)
 {
     return model->playing;
+}
+
+bool eva_player_is_standby(const eva_player_model_t *model)
+{
+    return model->standby;
 }
 
 eva_player_control_t eva_player_active_control(const eva_player_model_t *model)

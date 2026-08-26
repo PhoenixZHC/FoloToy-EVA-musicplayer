@@ -13,6 +13,7 @@ typedef enum {
 typedef enum {
     EVA_PLAYER_KEY_PRESS = 0,
     EVA_PLAYER_KEY_CLICK,
+    EVA_PLAYER_KEY_LONG,
 } eva_player_key_event_t;
 
 typedef enum {
@@ -30,6 +31,7 @@ typedef struct {
     size_t track_index;
     bool playing;
     bool auto_advance_pending;
+    bool standby;
     eva_player_control_t active_control;
     uint32_t elapsed_ms;
     uint32_t auto_advance_at_ms;
@@ -48,6 +50,7 @@ void eva_player_set_elapsed_ms(eva_player_model_t *model, uint32_t elapsed_ms);
 uint32_t eva_player_elapsed_ms(const eva_player_model_t *model);
 size_t eva_player_track_index(const eva_player_model_t *model);
 bool eva_player_is_playing(const eva_player_model_t *model);
+bool eva_player_is_standby(const eva_player_model_t *model);
 eva_player_control_t eva_player_active_control(const eva_player_model_t *model);
 const eva_player_track_t *eva_player_current_track(const eva_player_model_t *model);
 const eva_player_track_t *eva_player_track_at(size_t index);

@@ -58,6 +58,8 @@ The board has three buttons on one ADC ladder.
 | Physical input | UI result |
 | --- | --- |
 | `OK` click | Toggle play/pause |
+| `OK` long press while paused | Show NERV-logo standby screen |
+| `OK` click on standby screen | Return to the paused player at the same position |
 | `UP` press | Highlight `PREV` |
 | `UP` release/click | Switch to previous track |
 | `DOWN` press | Highlight `NEXT` |
@@ -70,6 +72,8 @@ Button callbacks must stay lightweight. Slow work, especially audio output, belo
 - Boot state is stopped.
 - Play resumes from the current track position.
 - Pause freezes the current position.
+- Standby is only entered from manual pause, not while playing or during the 2-second end-of-track hold.
+- Waking from standby keeps the same track, elapsed time, and paused state.
 - Manual previous/next changes track and resets the time.
 - At the real ADPCM end of a track, the UI holds the final timestamp for about 2 seconds.
 - After that hold, playback advances to the next track and continues.

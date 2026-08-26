@@ -2,6 +2,8 @@
 
 [简体中文](README.zh_CN.md) | English
 
+Current firmware version: `1.1.0`.
+
 This repository contains an ESP-IDF firmware project for the FoloToy AI Passport. The current application boots directly into a fixed, offline EVA-style music player for the 240 x 320 display and the three physical buttons.
 
 It started from the FoloToy AI Passport hardware baseline, but this checkout is now an application project, not only a hardware demo.
@@ -13,6 +15,7 @@ It started from the FoloToy AI Passport hardware baseline, but this checkout is 
 - Starts in the stopped state. It does not play music automatically after boot.
 - Plays a fixed local playlist from embedded compressed audio.
 - Uses `OK` to play and pause.
+- Uses long-press `OK` while paused to enter a NERV-logo standby screen; `OK` click wakes back to the paused player at the same position.
 - Uses `UP` to highlight `PREV`, then switches to the previous track on release.
 - Uses `DOWN` to highlight `NEXT`, then switches to the next track on release.
 - Freezes at the end of a track for 2 seconds, then automatically plays the next track.
@@ -116,6 +119,12 @@ The previously verified local image was named:
 release/FoloToy-EVA-music-player-full.bin
 ```
 
+The `1.1.0` full image is named:
+
+```text
+release/FoloToy-EVA-music-player-full-v1.1.0.bin
+```
+
 Do not publish a merged image if it embeds copyrighted audio or an official logo image.
 
 ## Tests
@@ -150,6 +159,7 @@ The last verified local firmware did the following on a FoloToy AI Passport:
 - entered the player without autoplay
 - played the three embedded tracks
 - kept button highlight states in sync with play, pause, previous, and next actions
+- entered and exited the NERV-logo standby screen from paused playback
 - reduced output volume to avoid obvious small-speaker distortion
 - held the exact end timestamp for about 2 seconds, then advanced to the next track
 
