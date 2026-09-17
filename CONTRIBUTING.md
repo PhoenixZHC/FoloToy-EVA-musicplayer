@@ -12,15 +12,16 @@ This project targets a small ESP32-C3 device with 8 MB Flash and no PSRAM. Keep 
 ## Code Rules
 
 - Keep board-level reusable logic in `components/bsp`.
-- Keep player-specific UI, state, and playback behavior in `main`.
+- Keep player-specific UI, state, playback, Wi-Fi upload, and catalog behavior in `main`.
 - Keep pure state logic testable without ESP-IDF or LVGL when practical.
 - Do not block inside button callbacks or LVGL timer callbacks.
 - Hold the LVGL lock when non-LVGL tasks touch LVGL objects.
+- After editing `web_ui.html`, `web_style.css`, or `audio_adpcm.js`, regenerate the ignored `web_ui.h` using `tools/prepare_local_font.ps1` and check browser behavior.
 - Do not increase image, font, audio, task stack, DMA, or LVGL buffers without checking Flash and internal RAM.
 
 ## Asset Rules
 
-Do not commit or publish copyrighted music or merged firmware images that contain protected assets unless you have rights to redistribute them. Generated UI image assets are committed with the source because the player interface depends on them.
+Do not commit or publish copyrighted music or merged firmware images that contain protected assets unless you have rights to redistribute them. The source font, generated text/image glyphs, LVGL font subsets, and embedded WOFF page header are excluded from Git. Builders supply their own font and regenerate them locally.
 
 Acceptable public files are:
 
@@ -35,15 +36,16 @@ See [docs/GIT_RULES.md](docs/GIT_RULES.md) for the exact list of files that shou
 
 ## Required Checks
 
-Before opening a pull request, run the relevant host tests and an ESP-IDF build.
+Before opening a pull request, generate local assets as described in [asset preparation](docs/ASSET_PREPARATION.md), then run the relevant host tests and an ESP-IDF build. Asset-dependent Python tests are skipped when the corresponding local font or startup sound is absent.
 
 ```powershell
 $env:PYTHONPATH = "tools"
 py -m pytest tests
+node tests/test_audio_adpcm.js
 idf.py build
 ```
 
-For UI, button, audio, display, partition, or memory changes, also test on real hardware and record what was observed.
+For UI, button, audio, display, partition, or memory changes, also test on real hardware and record what was observed. Build results and an older hardware check do not establish that the newest font and upload-page revision has passed on-device acceptance.
 
 ## Pull Request Notes
 

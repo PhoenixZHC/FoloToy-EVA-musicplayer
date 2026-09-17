@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EVA // AUDIO TRANSFER</title>
+<style>/*__EVA_LAYOUT__*/</style>
+</head>
+<body><main class="shell">
+<div class="topline"><strong class="top-brand">NERV</strong><div class="top-description">SOUND OPERATIONS<small>OFFLINE MUSIC MANAGEMENT SYSTEM</small></div><div class="top-link">LOCAL LINK • <strong>01</strong></div><div class="top-sys">TOKYO-3<br>NERV<br>AUDIO SYS</div><div class="top-stripes" aria-hidden="true"></div></div>
+<div class="hero-grid"><aside class="hero-side" aria-hidden="true"><img class="side-mark" src="data:image/png;base64,__NERV_LOGO_PNG__" alt=""><p>GOD'S<br>IN HIS<br>HEAVEN<br>ALL'S RIGHT<br>WITH THE WORLD.</p></aside><header class="hero"><div class="hex-field" aria-hidden="true"><span>▲</span><span>EMERGENCY</span><span>▲</span><span>▲</span></div><div class="hero-copy"><div class="hero-eva">EVA</div><div class="hero-title"><h1>音频传输终端</h1><p>AUDIO TRANSFER TERMINAL</p></div></div><div class="hero-bottom"><strong>音乐只在手机上转换，不经过云端　/　设备本地存储</strong><small>MAGI SYSTEM<br>// AUDIO ARCHIVE</small></div></header><aside class="hero-side hero-side-right" aria-hidden="true">SYS<br>VER.1.0.0<br>NERV<br>AUDIO<br>CONTROL</aside></div>
+<div class="band"><span class="band-num">01<small>SECTION</small></span><strong class="band-title">新音乐导入</strong><span class="band-en">// IMPORT AUDIO</span><span class="band-end">NERV AUDIO OPERATIONS</span><i class="band-stripes" aria-hidden="true"></i></div>
+<div class="work-grid"><section class="panel"><div class="panel-heading"><h2>选择音频文件</h2><small>SELECT AUDIO FILE</small><span class="tag">LOCAL ONLY</span></div>
+<label class="upload"><span><span class="upload-plus" aria-hidden="true">+</span><strong>点击选择音乐</strong><small>MP3 / WAV / 浏览器支持的音频<br>音乐只在手机上转换，不经过云端</small></span><input id="file" type="file" accept="audio/*,.mp3,.wav,.m4a"></label>
+<div class="file" id="chosen"></div><button class="action" id="send" disabled>⬆ 开始传输 <span>// TRANSFER</span></button><div class="meter"><div class="fill" id="fill"></div></div><div class="meter-meta"><span id="progress">0%</span><span>FAM1 / ADPCM</span></div><div class="signal" id="message">SYSTEM READY • 等待音乐输入</div></section>
+<aside class="panel storage-panel"><div class="panel-heading"><h2>存储状态</h2><small>STORAGE STATUS</small></div><div class="stats"><div class="stat"><span>剩余</span><strong id="free">--</strong><em>AVAILABLE</em></div><div class="stat"><span>曲目</span><strong id="count">--</strong><em>TRACKS</em></div></div><p class="storage-note">优先转换为 12 kHz；空间不足时尝试 8 kHz。单首最长 6 分钟，转换后不超过 2.5 MB。上传完成后可断开热点，音乐保留在设备中。</p><div class="storage-card">SOUND STORAGE<br>LOCAL DEVICE <span>TOKYO-3<br>NERV<br>INTERNAL MEMORY</span></div><p class="storage-note" id="font-state">网页已内置 EVA 明朝体；未收录的歌名字形使用系统字体。</p></aside><aside class="rail" aria-hidden="true"><p>MAIN<br>ONLINE</p><p>SUB<br>OFFLINE</p><p>AUX<br>STANDBY</p></aside></div>
+<div class="band"><span class="band-num">02<small>SECTION</small></span><strong class="band-title">本地音频档案</strong><span class="band-en">// LOCAL ARCHIVE</span><i class="band-stripes" aria-hidden="true"></i></div>
+<div class="archive-grid"><aside class="archive-side" aria-hidden="true">TOKYO-3<strong id="archive-total">--</strong>AUDIO<br>SYS ONLINE</aside><section class="archive-panel"><div class="archive-head"><span>#</span><span>音乐文件</span><span>操作</span></div><div class="list" id="tracks"><div class="empty">正在读取设备曲库…</div></div></section><aside class="archive-side right" aria-hidden="true">業務以外の使用を禁ず</aside></div>
+<div class="footer"><strong>NERV</strong><span>EVA PLAYER // OFFLINE MUSIC MANAGEMENT</span></div>
+</main>
+<script>/*__AUDIO_ENCODER__*/</script>
+<script>
+const $=id=>document.getElementById(id);let storageFree=0,trackCount=0,busy=false;
+const EVA_FONT_CODES=new Set(/*__EVA_FONT_CODES__*/);
+const MAX_SOURCE=30*1024*1024,MAX_DURATION=6*60,RESERVE=128*1024;
+function bytes(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB'}
+function duration(ms){const s=Math.round(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function message(text,error=false){$('message').textContent=(error?'ALERT · ':'STATUS · ')+text;$('message').style.borderColor=error?'#ea0054':'#ff8914'}
+async function load(){
+  try{
+    const r=await fetch('/audio/list',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+    const d=await r.json();storageFree=d.free;trackCount=d.count;
+    $('free').textContent=bytes(d.free);$('count').textContent=String(d.count).padStart(2,'0');
+    $('archive-total').textContent=String(d.count).padStart(2,'0');$('tracks').textContent='';
+    if(!d.count){$('tracks').innerHTML='<div class="empty">曲库为空。选择音乐并开始传输。</div>';return}
+    d.tracks.forEach(t=>{
+      const row=document.createElement('div');row.className='track';
+      const n=document.createElement('span');n.className='num';n.textContent=String(t.i+1).padStart(2,'0');
+      const info=document.createElement('div');info.className='info';
+      const title=document.createElement('div');title.className='title';title.textContent=t.title||'未命名音乐';
+      const meta=document.createElement('div');meta.className='meta';meta.textContent=duration(t.duration)+' · '+(t.sr/1000)+' kHz · '+bytes(t.size);
+      info.append(title,meta);
+      const actions=document.createElement('div');actions.className='track-actions';
+      const fix=document.createElement('button');fix.className='danger';fix.textContent='同步歌名';fix.onclick=()=>syncTitle(t.i,t.title);
+      const del=document.createElement('button');del.className='danger';del.textContent='删除';del.onclick=()=>remove(t.i);
+      actions.append(fix,del);row.append(n,info,actions);$('tracks').appendChild(row);
+    });
+  }catch(e){message('读取曲库失败：'+e.message,true)}
+}
+async function remove(i){if(busy||!confirm('删除这首音乐？'))return;busy=true;try{const r=await fetch('/audio/delete?i='+i,{method:'POST'});if(!r.ok)throw Error('HTTP '+r.status);message('音乐已删除');await load()}catch(e){message('删除失败：'+e.message,true)}finally{busy=false}}
+function chooseRate(seconds,name){for(const rate of [12000,8000]){const size=FoloAudio.estimateFam1Bytes(Math.ceil(seconds*rate),name);if(size<=FoloAudio.MAX_FAM1_BYTES&&size+RESERVE<=storageFree)return rate}throw Error('剩余空间不足，无法保存这首音乐')}
+async function encode(file){if(file.size>MAX_SOURCE)throw Error('原文件超过 30 MB');const Context=window.AudioContext||window.webkitAudioContext;if(!Context)throw Error('浏览器不支持音频解码');const context=new Context();let decoded;try{decoded=await context.decodeAudioData(await file.arrayBuffer())}finally{await context.close()}if(decoded.duration>MAX_DURATION)throw Error('单首音乐不能超过 6 分钟');const rate=chooseRate(decoded.duration,file.name);message('正在转换 '+(rate/1000)+' kHz 音频');const mono=new Float32Array(decoded.length);for(let ch=0;ch<decoded.numberOfChannels;ch++){const src=decoded.getChannelData(ch);for(let i=0;i<src.length;i++)mono[i]+=src[i]/decoded.numberOfChannels}const offline=new OfflineAudioContext(1,Math.ceil(decoded.duration*rate),rate);const buffer=offline.createBuffer(1,mono.length,decoded.sampleRate);buffer.copyToChannel(mono,0);const source=offline.createBufferSource();source.buffer=buffer;source.connect(offline.destination);source.start();const rendered=await offline.startRendering();const samples=rendered.getChannelData(0);const pcm=new Int16Array(samples.length);for(let i=0;i<samples.length;i++){const v=Math.max(-1,Math.min(1,samples[i]));pcm[i]=Math.round(v<0?v*32768:v*32767)}return FoloAudio.encodePcm16ToFam1(pcm,rate,file.name)}
+function postAudio(payload){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST','/audio/upload');xhr.timeout=120000;xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);$('fill').style.width=p+'%';$('progress').textContent=p+'%'}};xhr.onload=()=>xhr.status===200?resolve(xhr.responseText):reject(Error(xhr.responseText||'HTTP '+xhr.status));xhr.onerror=()=>reject(Error('连接中断'));xhr.ontimeout=()=>reject(Error('上传超时'));xhr.send(payload)})}
+async function titleImageBytes(name){const faces=await document.fonts.load('29px "EVA Matisse"');if(!faces.length)throw Error('EVA 字体加载失败');const text=FoloAudio.sanitizeAudioTitle(name);const missing=[...new Set([...text].filter(c=>!EVA_FONT_CODES.has(c.codePointAt(0))))];if(missing.length){$('font-state').textContent='歌名中的 '+missing.join('')+' 未收录在 EVA 字体中，使用系统字体显示。';$('font-state').style.display='block'}else{$('font-state').style.display='none'}const canvas=document.createElement('canvas');const ctx=canvas.getContext('2d');const font='29px "EVA Matisse","Yu Mincho","Songti SC",serif';ctx.font=font;const w=Math.min(768,Math.max(16,Math.ceil(ctx.measureText(text).width)+10));canvas.width=w;canvas.height=34;ctx.font=font;ctx.fillStyle='#fff';ctx.textBaseline='middle';ctx.fillText(text,5,17);const rgba=ctx.getImageData(0,0,w,34).data;const out=new Uint8Array(8+w*34);out.set([69,84,84,49,w&255,w>>8,34,0]);for(let i=0;i<w*34;i++)out[8+i]=rgba[i*4+3];return out}
+document.fonts.load('29px "EVA Matisse"').then(faces=>{if(!faces.length)throw Error('未找到字体')}).catch(e=>{$('font-state').textContent='EVA 字体加载失败：'+e.message;$('font-state').style.display='block';message('EVA 字体加载失败',true)});
+async function syncTitle(index,name){if(busy)return;busy=true;try{const r=await fetch('/audio/title?i='+index,{method:'POST',body:await titleImageBytes(name)});if(!r.ok)throw Error('HTTP '+r.status);message('歌名已同步到设备')}catch(e){message('歌名同步失败：'+e.message,true)}finally{busy=false}}
+$('file').onchange=()=>{const f=$('file').files[0];$('chosen').textContent=f?f.name+' · '+bytes(f.size):'';$('send').disabled=!f};
+$('send').onclick=async()=>{if(busy)return;const f=$('file').files[0];if(!f)return;busy=true;$('send').disabled=true;$('fill').style.width='0';$('progress').textContent='0%';let saved=false;try{message('正在读取音乐');const payload=await encode(f);message('正在传输 '+bytes(payload.length));const result=JSON.parse(await postAudio(payload));saved=true;const titleResponse=await fetch('/audio/title?i='+result.index,{method:'POST',body:await titleImageBytes(f.name)});if(!titleResponse.ok)throw Error('歌名图 HTTP '+titleResponse.status);message('传输完成，音乐已加入曲库');$('file').value='';$('chosen').textContent='';await load()}catch(e){message((saved?'音乐已保存，但歌名图失败：':'上传失败：')+e.message,true);if(saved)await load()}finally{busy=false;$('send').disabled=!$('file').files.length}};
+load();
+</script></body></html>

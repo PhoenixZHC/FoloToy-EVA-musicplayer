@@ -10,7 +10,7 @@
 - `NOTICE.md`
 - `docs/*.md`
 - `components/bsp/**`
-- `main/eva_*.c`、`main/eva_*.h`，包括生成后的图片/Logo 资源源码
+- 播放器源码、`audio_catalog.*`、`fam1_format.*`、`audio_adpcm.js`、`web_ui.html`、`web_style.css`、`eva_font_matisse.h`；生成的字形与网页头文件除外
 - `main/ui_pixel*.c`、`main/ui_pixel*.h`
 - `main/main.c`
 - `tools/*.py`、`tools/*.ps1`
@@ -19,6 +19,7 @@
 - `sdkconfig.defaults`
 - `CMakeLists.txt` 和各级 `CMakeLists.txt`
 - `assets/audio/README.md`
+- `assets/promo/` 中有权发布的图片
 
 ## 不要提交
 
@@ -26,9 +27,10 @@
 | --- | --- | --- |
 | 原始音乐 | `*.mp3`, `*.wav`, `*.flac`, `*.m4a` | 可能有版权，公开仓库不能直接分发 |
 | 生成音频 | `assets/audio/*.adpcm` | 是从本地音乐生成的，仍可能包含版权内容 |
+| 字体及生成字形 | 自备 OTF/TTF、`main/eva_text_assets.c/.h`、`main/eva_text_buttons.c/.h`、`main/eva_font_matisse_14.c`、`main/eva_font_matisse_20.c`、`main/web_ui.h` | 均含本地字体生成的数据；用户明确要求不上传字体 |
 | 完整固件 | `release/*.bin`, `*.bin` | bin 里会内嵌音乐和 Logo |
 | ESP-IDF 构建目录 | `build/`, `managed_components/` | 可重新生成，体积大 |
-| 本机配置 | `sdkconfig`, `sdkconfig.old`, `.vscode/`, `.idea/` | 只适合本机，不适合别人复用 |
+| 本机配置 | `sdkconfig`, `sdkconfig.old`, `.venv/`, `.vscode/`, `.idea/` | 只适合本机，不适合别人复用 |
 | 依赖锁和缓存 | `dependencies.lock`, `__pycache__/`, `.pytest_cache/` | 可重新生成 |
 | 本地协作记录 | `CONTEXT.md`, `docs/superpowers/` | 是本机开发过程记录，不是开源用户文档 |
 | 测试可执行文件 | `build_test_*`, `*.exe`, `*.o`, `*.obj` | 编译输出，不是源码 |
@@ -55,6 +57,12 @@ git ls-files
 *.flac
 *.m4a
 assets/audio/*.adpcm
+FOT-MatissePro-EB.otf
+main/eva_text_assets.*
+main/eva_text_buttons.*
+main/eva_font_matisse_14.c
+main/eva_font_matisse_20.c
+main/web_ui.h
 release/*.bin
 CONTEXT.md
 docs/superpowers/
@@ -76,17 +84,14 @@ git rm --cached path\to\file
 
 ## 图片资源规则
 
-本项目的图片类资源需要上传，包括：
+独立于字体的图片资源可以提交，例如：
 
 ```text
 main/eva_logo_assets.c
 main/eva_logo_assets.h
-main/eva_text_assets.c
-main/eva_text_assets.h
-main/eva_text_buttons.c
-main/eva_text_buttons.h
+assets/promo/*.png
 ```
 
-原因是设备运行时需要这些生成后的 UI 图片数据。没有这些文件，公开仓库里的播放器界面不完整。
+字体生成的文字图片和网页 WOFF 即使以 C 数组保存，也属于字体衍生数据，不提交。克隆仓库后使用自备字体运行 `tools/prepare_local_font.ps1` 生成；详见 `docs/ASSET_PREPARATION.md`。
 
-如果以后增加 `.png`、`.jpg`、`.jpeg`、`.webp`、`.bmp`、`.svg` 等图片源文件，默认也可以提交；只有音乐、生成音频和完整固件镜像默认不提交。
+新增 `.png`、`.jpg`、`.jpeg`、`.webp`、`.bmp`、`.svg` 时也要检查素材来源；音乐、生成音频、字体及其生成字形、完整固件镜像不提交。

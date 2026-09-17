@@ -1,5 +1,13 @@
 from pathlib import Path
+import os
 import sys
+import pytest
+
+FONT_FILE = Path(os.environ.get("EVA_FONT_PATH", Path(__file__).resolve().parents[1] / "FOT-MatissePro-EB.otf"))
+pytestmark = pytest.mark.skipif(
+    not FONT_FILE.is_file(),
+    reason="local font is required for generated-asset tests",
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from prepare_text_buttons import alpha_bytes, build_source, render_text

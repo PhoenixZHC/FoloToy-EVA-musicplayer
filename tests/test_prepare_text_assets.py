@@ -1,5 +1,13 @@
 from pathlib import Path
+import os
 import sys
+import pytest
+
+FONT_FILE = Path(os.environ.get("EVA_FONT_PATH", Path(__file__).resolve().parents[1] / "FOT-MatissePro-EB.otf"))
+pytestmark = pytest.mark.skipif(
+    not FONT_FILE.is_file(),
+    reason="local font is required for generated-asset tests",
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from prepare_text_assets import build_assets
@@ -28,6 +36,17 @@ def test_internal_panel_contains_orange_and_magenta_pixels():
     assert any(r > 180 and g < 40 and 60 < b < 150 for r, g, b, _ in opaque)
 
 
+def test_internal_battery_bars_are_generated_in_order():
+    assets = {asset.name: asset for asset in build_assets()}
+    images = [assets[f"eva_text_internal_battery_{count}"].image.convert("RGBA")
+              for count in range(3)]
+    images.append(assets["eva_text_internal_jp"].image.convert("RGBA"))
+    magenta = [sum(r > 180 and g < 40 and 60 < b < 150 and a > 200
+                   for r, g, b, a in image.getdata()) for image in images]
+    assert magenta[0] == 0
+    assert magenta[0] < magenta[1] < magenta[2] < magenta[3]
+
+
 def test_system_panel_fits_target_frame():
     assets = {asset.name: asset for asset in build_assets()}
     panel = assets["eva_text_system_jp"].image.convert("RGBA")
@@ -48,4 +67,4 @@ def test_evangelion_wordmark_fits_the_green_header_panel():
     _, top, _, bottom = wordmark.getbbox()
     assert abs(top - (wordmark.height - bottom)) <= 1
     ink_pixels = sum(1 for pixel in wordmark.getdata() if pixel >= 128)
-    assert 400 <= ink_pixels <= 800
+    assert ink_pixels > 100

@@ -2,169 +2,53 @@
 
 [简体中文](README.zh_CN.md) | English
 
-Current firmware version: `1.1.0`.
+Offline music player firmware for the FoloToy AI Passport (ESP32-C3, 8 MB Flash). Current source version: `1.2.0-dev`. The NERV splash plays a locally prepared startup sound. Songs live in a dedicated Flash partition and can be uploaded from a phone through the device's open Wi-Fi hotspot.
 
-This repository contains an ESP-IDF firmware project for the FoloToy AI Passport. The current application boots directly into a fixed, offline EVA-style music player for the 240 x 320 display and the three physical buttons.
+## Use
 
-It started from the FoloToy AI Passport hardware baseline, but this checkout is now an application project, not only a hardware demo.
+1. The backlight stays off until the NERV splash is drawn; the startup sound plays with the splash. An empty library shows `NO TRACKS`.
+2. While stopped or paused, hold `DOWN` to open transfer mode.
+3. Connect to the displayed `EVA-PLAYER-XXXX` hotspot without a password and open `http://192.168.4.1/`.
+4. Select a song and wait for the success message. Hold `DOWN` on the device to leave transfer mode. `OK` plays/pauses; `UP` and `DOWN` change songs.
 
-## What It Does
+Hold `UP` on the player to open the EVA volume screen. Click `UP` or `DOWN` to adjust output by 5% from 0 to 100%, then click `OK` to return. The setting is saved when leaving the screen and restored at boot. Hold `DOWN` as before to enter and leave hotspot mode.
 
-- Shows a black startup screen with a centered red NERV-style logo for 3 seconds.
-- Opens a front-facing EVA-inspired player UI.
-- Starts in the stopped state. It does not play music automatically after boot.
-- Plays a fixed local playlist from embedded compressed audio.
-- Uses `OK` to play and pause.
-- Uses long-press `OK` while paused to enter a NERV-logo standby screen; `OK` click wakes back to the paused player at the same position.
-- Uses `UP` to highlight `PREV`, then switches to the previous track on release.
-- Uses `DOWN` to highlight `NEXT`, then switches to the next track on release.
-- Freezes at the end of a track for 2 seconds, then automatically plays the next track.
-- Scrolls long track titles from right to left like a marquee.
+The page converts music in the browser to mono FAM1/IMA ADPCM at 12 kHz or 8 kHz. Limits: six minutes per song, 30 MB source file, 2.5 MB converted file, and 32 catalog entries. Available Flash space may allow fewer songs. The page can list and delete songs and resend a title image. Playback is paused during transfer mode; after leaving, the selected song starts from the beginning.
 
-Current display titles:
+The fixed device labels, buttons, and runtime ASCII text are generated locally from a font supplied by the builder. The upload page embeds a compact subset of that font, loads it automatically on every phone, and uses it for page text and new song title masks. No font selection is required on the phone. Characters absent from the subset use the browser's fallback font, and the page reports them when syncing a title. Existing title images need to be resent with “同步歌名”. The font, generated glyphs, and WOFF subset are excluded from Git.
 
-- `残酷な天使のテーゼ`
-- `One Last Kiss`
-- `Beautiful World`
+Holding `OK` while paused opens the NERV standby screen; clicking `OK` returns to the player. At the end of a song, the display holds for about two seconds before playing the next song.
 
-The original fourth candidate track was removed to keep the firmware within the 8 MB Flash budget.
-
-## Important Asset Notice
-
-This repository is intended for source-code sharing. Do not publish copyrighted songs, extracted music, or generated firmware images that contain protected assets unless you have the required rights.
-
-The source code is MIT licensed. Music, trademarks, character names, fonts, logos, and other third-party assets are not included in that license. See [NOTICE.md](NOTICE.md).
-
-For an open-source release, keep these files local unless you can legally redistribute them:
-
-- source music files such as `.mp3`, `.wav`, `.flac`, or `.m4a`
-- generated compressed audio under `assets/audio/*.adpcm`
-- merged firmware images under `release/*.bin`
-
-Generated image assets used by the UI are part of the source release for this project. See [docs/ASSET_PREPARATION.md](docs/ASSET_PREPARATION.md) and [docs/GIT_RULES.md](docs/GIT_RULES.md).
-
-## Hardware Target
-
-| Item | Current value |
-| --- | --- |
-| Board | FoloToy AI Passport |
-| MCU | ESP32-C3 |
-| Flash | 8 MB |
-| PSRAM | None |
-| Display | ST7789P3, 240 x 320, RGB565, portrait |
-| Buttons | `UP`, `DOWN`, `OK` on one ADC resistor ladder |
-| Audio | ES8311 over I2S0 |
-| Battery gauge | CW2017 on shared I2C0, optional at runtime |
-| Console | Native USB Serial/JTAG |
-
-Detailed pin, display, audio, button, battery, and memory notes are in [docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md).
-
-## Project Layout
-
-```text
-components/bsp/       Board support package: display, buttons, audio, battery, I2C
-main/                 EVA player application, generated UI assets, playback model
-assets/audio/         Local generated ADPCM audio files, not for public release
-tools/                Asset conversion and inspection scripts
-tests/                Host-side logic and asset validation tests
-docs/                 Hardware, architecture, asset, and release documentation
-partitions.csv        8 MB Flash partition layout with a 4 MB factory app slot
-sdkconfig.defaults    ESP32-C3, USB console, LVGL, Flash, and partition defaults
-```
-
-The main architecture is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+The red marks beside “INTERNAL” indicate CW2017 battery charge: one at 1–33%, two at 34–66%, and three at 67–100%. They stay dark at 0% or if the reading fails. The display refreshes this roughly every 30 seconds.
 
 ## Build
 
-Use ESP-IDF 5.5.x. The firmware has been developed with ESP-IDF 5.5.3.
+Use ESP-IDF 5.5.x. Supply your own font with Chinese/Japanese glyph coverage and a legally usable startup sound. Install Python Pillow and fonttools in `.venv` and Node.js/npm, then generate the local font assets before building; see [asset preparation](docs/ASSET_PREPARATION.md). These generated files are excluded from Git and must be recreated after cloning:
 
 ```powershell
-idf.py set-target esp32c3
+py -m venv .venv
+& '.\.venv\Scripts\python.exe' -m pip install pillow fonttools
+.\tools\prepare_local_font.ps1 -FontFile 'C:\path\to\your-font.otf'
+.\tools\prepare_startup_audio.ps1 -InputFile 'C:\path\to\startup.mp3'
 idf.py build
 ```
 
-On a fresh public checkout, the build requires locally generated audio and logo assets first. The expected generated audio files are:
+The font and web redesign built with ESP-IDF 5.5.4. The app image is `0x19d530` bytes and leaves about 19% of the 2 MB app slot free. The redesigned page passed desktop and mobile browser preview checks. On 2026-09-18, COM14's 8 MB ESP32-C3 Flash was erased, then the current bootloader, partition table, and app were written with hash verification. Boot logs confirm `Storage=1`, display initialization, audio codec startup, and battery polling. The screen appearance and upload flow have not yet been checked on this fresh flash. A full erase removes stored songs and settings.
 
-```text
-assets/audio/track0.adpcm
-assets/audio/track1.adpcm
-assets/audio/track2.adpcm
-```
+A complete 8 MB local image of this build is at `release/FoloToy-EVA-music-player-full-8MB-Matisse-Web-20260918.bin`, with a matching `.sha256` file. Flash the image at offset `0x0`; it fills unused regions with `0xFF` and therefore replaces stored songs and settings. It has been byte-checked against the current bootloader, partition table, and app, but the merged image itself has not been flashed. Do not distribute it without checking rights to its embedded audio, images, and font subset.
 
-If these files are missing, prepare your own legally usable tracks and follow [docs/ASSET_PREPARATION.md](docs/ASSET_PREPARATION.md).
+Do not publish startup audio, user music, or a firmware image containing protected material without the required rights. See [NOTICE.md](NOTICE.md) and [docs/ASSET_PREPARATION.md](docs/ASSET_PREPARATION.md).
 
-## Flash
+## Layout
 
-Flash the connected board with ESP-IDF:
+| Path | Purpose |
+| --- | --- |
+| `components/bsp/` | Display, buttons, audio and other board support |
+| `main/` | Player, FAM1 decoder, catalog, Wi-Fi service and upload page |
+| `assets/audio/` | Local generated startup sound, excluded from Git |
+| `tools/prepare_local_font.ps1` | Generates untracked font glyphs, UI masks, and upload page |
+| `assets/promo/` | Three 3:4 promotional images based on user-provided device photos; generated artwork, not literal hardware screenshots |
+| `partitions.csv` | 2 MB app and approximately 5.9 MB music partition |
+| `tests/` | Host-side state and codec tests |
 
-```powershell
-idf.py -p COM13 flash monitor
-```
-
-Use the actual port shown on your computer. `COM13` is only the last verified local device port.
-
-## Full Firmware Image
-
-A merged full image can be created after a successful build by combining:
-
-| Offset | File |
-| ---: | --- |
-| `0x0` | `build/bootloader/bootloader.bin` |
-| `0x8000` | `build/partition_table/partition-table.bin` |
-| `0x10000` | `build/Folotoy_EVA_player.bin` |
-
-The previously verified local image was named:
-
-```text
-release/FoloToy-EVA-music-player-full.bin
-```
-
-The `1.1.0` full image is named:
-
-```text
-release/FoloToy-EVA-music-player-full-v1.1.0.bin
-```
-
-Do not publish a merged image if it embeds copyrighted audio or an official logo image.
-
-## Tests
-
-The project has host-side tests for the pure player model, ADPCM decoding, clock formatting, title layout, generated text assets, logo conversion, and RGB565 color output.
-
-Recommended checks before release:
-
-```powershell
-$env:PYTHONPATH = "tools"
-py -m pytest tests
-```
-
-The C host tests are plain C programs. Build them with a local C compiler and run the produced executables:
-
-```powershell
-cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_player_model.c main/eva_player_model.c -o build_test_eva_player_model.exe
-cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_adpcm.c main/eva_adpcm.c -o build_test_eva_adpcm.exe
-cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_clock.c main/eva_clock.c -o build_test_eva_clock.exe
-cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_eva_track_layout.c main/eva_track_layout.c -o build_test_eva_track_layout.exe
-cc -std=c11 -Wall -Wextra -Werror -Imain tests/test_ui_pixel_math.c main/ui_pixel_math.c -o build_test_ui_pixel_math.exe
-```
-
-An ESP-IDF build proves the firmware compiles. It does not replace hardware testing on the actual device.
-
-## Current Verified Behavior
-
-The last verified local firmware did the following on a FoloToy AI Passport:
-
-- booted without a reboot loop
-- showed a red NERV-style logo on a black background
-- entered the player without autoplay
-- played the three embedded tracks
-- kept button highlight states in sync with play, pause, previous, and next actions
-- entered and exited the NERV-logo standby screen from paused playback
-- reduced output volume to avoid obvious small-speaker distortion
-- held the exact end timestamp for about 2 seconds, then advanced to the next track
-
-The app image was close to the 4 MB application partition limit, so new assets should be reviewed carefully.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/GIT_RULES.md](docs/GIT_RULES.md). Keep hardware facts in `components/bsp`, keep application state testable, and keep redistributable source separate from local media assets.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for design details. An earlier build was validated on COM14: startup sound, three uploaded songs, correct titles, persistence after reboot, repeated hotspot access, volume controls, and prompt NERV splash. That three-song catalog scan took about 13 seconds under the splash. The latest `1.2.0-dev` font and page build was flashed after a whole-chip erase; boot logs passed, while its screen appearance and upload flow await another on-device check. The local acceptance record is kept outside Git.

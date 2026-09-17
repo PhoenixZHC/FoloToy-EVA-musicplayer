@@ -8,15 +8,15 @@
 
 AI 应先完成以下检查：
 
-1. 阅读 `AGENTS.md`、本文件、`README.md` 和将要修改的 BSP 头文件/实现。
+1. 阅读 `AGENTS.md`、`CONTEXT.md`（本机存在时）、相关 README 和将要修改的文件；涉及板级行为时再读本指南的对应章节。
 2. 执行 `git status --short`，保留用户已有改动，不覆盖、不清理无关文件。
-3. 判断修改属于哪一层：可复用硬件能力放入 `components/bsp`；菜单、动画、业务交互和验证页面放入 `main`。
+3. 判断修改属于哪一层：可复用硬件能力放入 `components/bsp`；播放器、动画、上传页面和旧硬件验证示例放入 `main`。
 4. 以 `bsp_pins.h` 为当前板卡引脚和面板参数的单一事实来源，不在 `.c` 文件重复写 GPIO、I2C 地址或屏幕尺寸。
 5. 不确定板卡版本、极性、芯片寄存器或接线时，明确标注“未知/待实测”，不要把常见开发板参数当成本板事实。
 
 ## 2. 硬件总览
 
-当前代码针对 ESP32-C3 FoloToy AI Passport，使用 ESP-IDF 5.5.x（已知开发环境为 5.5.3）。MCU **没有 PSRAM**，外设 DMA 和 UI 都使用内部 RAM。
+当前代码针对 ESP32-C3 FoloToy AI Passport，使用 ESP-IDF 5.5.x（本次固件已在 5.5.4 构建）。MCU **没有 PSRAM**，外设 DMA 和 UI 都使用内部 RAM。
 
 | 子系统 | 器件/方式 | 总线或资源 | 当前状态 |
 | --- | --- | --- | --- |
@@ -59,16 +59,13 @@ LCD RST 和功放 PA 使能均定义为 `-1`：LCD 复位脚未接 MCU，驱动�
 
 ```text
 app_main
-  ├─ bsp_i2c_init → bsp_i2c_scan
-  ├─ bsp_display_init → bsp_lvgl_init → backlight 100%
-  ├─ bsp_button_init(on_key)
-  ├─ bsp_audio_init
-  ├─ bsp_battery_init
-  └─ EVA music player
-       ├─ 3 秒黑底红色 NERV 风格启动页
-       ├─ 固定三首歌播放界面
-       ├─ UP / DOWN / OK 三键控制
-       └─ ADPCM 音频工作任务
+  ├─ 先关闭背光 → I2C 扫描 → LCD/LVGL → 按键/电池 → NVS
+  ├─ 绘制 NERV 首帧 → 点亮背光并播放内嵌启动音
+  ├─ NERV 画面保留期间挂载 FAT 音乐分区并校验曲库
+  └─ 动态曲库播放器（空曲库也可进入）
+       ├─ UP / DOWN / OK 三键控制、音量页、电量条
+       ├─ 长按 DOWN 进入开放 Wi-Fi 热点与网页上传
+       └─ 从 Flash 分块读取 FAM1/IMA ADPCM 音乐
 ```
 
 显示是 UI 的硬依赖，显示或 LVGL 初始化失败时 `app_main` 直接返回。按键和音频是播放器的关键依赖；电池是软依赖，读取失败不应导致播放器退出。旧 `demo_*.c` 文件仍可作为 BSP 验证参考，但当前主程序不再显示 demo 菜单。
@@ -82,7 +79,7 @@ app_main
 - `bsp_battery.h`：SOC 与电压。
 - `bsp_pins.h`：硬件常量，不承载业务逻辑。
 
-驱动初始化大多设计为幂等，但当前没有统一 deinit API。不要假设可以在运行时反复销毁和重建总线/驱动。
+驱动初始化大多设计为幂等。音频 BSP 提供 `bsp_audio_deinit()`，播放任务在暂停或进入热点时释放音频硬件，为 Wi-Fi 留出内部 RAM；其他驱动没有统一的反初始化流程。不要假设可以随意重建总线或显示驱动。
 
 ## 5. 显示与 LVGL
 
@@ -129,9 +126,9 @@ LVGL 非线程安全：
 - ADC 衰减为 `ADC_ATTEN_DB_12`，必须与依赖的 button 组件内部配置保持一致。升级组件后要重新核对。
 - ADC 校准句柄创建失败不影响按键事件，但 `bsp_button_read_mv()` 返回 `-1`。
 - 回调来自 button 组件的定时器任务，不能阻塞、录音、播放或直接做重 UI 操作。
-- 事件包括 PRESS、CLICK、DOUBLE、LONG。应用菜单主要消费 CLICK；页面中的 OK LONG 被全局拦截用于返回。
+- 事件包括 PRESS、CLICK、DOUBLE、LONG。当前播放器使用短按切歌/播放、长按 UP 打开音量页、停止或暂停时长按 DOWN 打开热点、暂停时长按 OK 打开待机页；各页面按自身规则处理返回。
 
-重标阈值时，在 Button 页逐个长按按键记录稳定电压，采集多块板、不同电量和合理温度范围的数据，再把相邻分布之间留裕量设置为边界。不要只用理论分压值。
+重标阈值时，可借助旧 Button demo 或临时诊断程序记录稳定电压，采集多块板、不同电量和合理温度范围的数据，再把相邻分布之间留裕量设置为边界。不要只用理论分压值。
 
 ## 7. 共享 I2C
 
@@ -140,7 +137,7 @@ I2C0 使用 SDA GPIO10、SCL GPIO7。ES8311 地址为 7 bit `0x18`，CW2017 为 
 重要规则：
 
 - 不要在同一个 I2C port 上为扫描或单个设备再创建临时 master bus。
-- IDF 5.5.3 中，重复建总线后走错误清理可能解绑正式 SDA/SCL，使两个芯片同时失联。扫描必须用现有总线上的 `i2c_master_probe()`。
+- 已在 IDF 5.5.x 环境发现：重复建总线后走错误清理可能解绑正式 SDA/SCL，使两个芯片同时失联。扫描必须用现有总线上的 `i2c_master_probe()`。
 - `bsp_i2c_scan()` 扫描 0x08–0x77，适合启动诊断；它返回 OK 只表示扫描完成，不表示一定找到设备。
 - CW2017 设备速率明确为 100 kHz。ES8311 控制接口由 `esp_codec_dev` 管理。
 - ES8311 创建控制接口时库 API 要求 8 bit 地址，因此传入 `0x18 << 1`；其他使用 7 bit 地址的 ESP-IDF API 不应照搬此移位。
@@ -170,7 +167,7 @@ MCU 是 I2S master，ES8311 是 slave；I2S0 的 TX/RX 全双工通道共享 MCL
 - `bsp_audio_read/write` 是阻塞调用，不能放在按键回调或 LVGL 任务中。
 - I2S DMA 当前为 6 个 descriptor、每个 240 frame。更改 DMA 或 LVGL buffer 前必须联合评估内部 RAM。
 
-旧 Audio demo 使用独立 4 KB 栈任务：OK 播放 1 秒 1 kHz 方波，UP 录 3 秒再回放。该文件现在主要作为 BSP 音频参考。当前 EVA 播放器使用内嵌 8 kHz 单声道 4-bit ADPCM 音频和播放工作任务，不做录音。
+旧 Audio demo 使用独立 4 KB 栈任务：OK 播放 1 秒 1 kHz 方波，UP 录 3 秒再回放。该文件现在主要作为 BSP 音频参考。当前 EVA 播放器仅将 8 kHz 单声道 EVA1/IMA ADPCM 启动音内嵌在应用镜像；用户歌曲经浏览器转为 8 或 12 kHz FAM1/IMA ADPCM，存入 FAT 音乐分区，由播放任务分块解码，不做录音。
 
 录音缓冲约 96 KB，是旧 demo 中最显著的瞬时堆分配，可能因碎片或其他功能增大而失败。新增长录音应优先采用分块流式处理或外部存储，不可假设存在 PSRAM。
 
@@ -183,7 +180,9 @@ CW2017 在共享 I2C 地址 0x63。初始化读取 VERSION 确认在线，将 CO
 - SOC：读 0x04–0x05，仅返回高字节整数百分比；大于 100 视为未就绪并返回 `-1`。
 - 电压：读 0x02–0x03 的 14 bit 值，换算为 `raw × 312.5 µV`，API 返回 mV。
 - 事务超时当前为 100 ms，设备时钟为 100 kHz。
-- 芯片不应答时初始化返回 `ESP_ERR_NOT_FOUND`，菜单标记失败，但整机继续运行。
+- 芯片不应答时初始化返回 `ESP_ERR_NOT_FOUND`，播放器仍运行，电量红条不点亮。
+
+播放器每约 30 秒读取一次 SOC；1–33% 显示一条、34–66% 两条、67–100% 三条，0% 或无效读数不亮。这是读数分段显示，不代表电池已完成标定。
 
 SOC 准确度取决于电芯与 profile 的匹配程度。本驱动给出的是电量计读数，不等于实验室标定结果。若产品需要准确 SOC，必须取得电芯参数、CW2017 数据手册和供应商 profile，并完成完整充放电验证。
 
@@ -199,6 +198,7 @@ FoloToy AI Passport 的所有硬件批次均使用 8 MB Flash，`sdkconfig.defau
 - LCD DMA buffer 约 9.6 KB；
 - I2S DMA descriptor/frame buffer；
 - Audio demo 96 KB 录音堆；
+- Wi-Fi AP/HTTP 服务与 FAT 曲库扫描的运行时占用；
 - 各 FreeRTOS 任务栈和最大连续空闲块。
 
 新增图片、字体、网络栈、TLS、音频缓存或双缓冲时，应记录 build 后的静态 RAM/Flash 使用，并在运行时记录 free heap 与 largest free block。总 free heap 足够不代表能成功分配大连续缓冲。
@@ -213,20 +213,11 @@ FoloToy AI Passport 的所有硬件批次均使用 8 MB Flash，`sdkconfig.defau
 4. 初始化应尽量幂等，错误应返回 `esp_err_t` 并输出包含引脚/地址的诊断日志。
 5. 明确 API 的线程、阻塞、内存所有权、任务上下文和失败返回值。
 
-新增硬件验证页：
-
-1. 创建 `main/demo_<feature>.c`，实现 `enter`、`exit`、`key`。
-2. 在 `main/demo.h` 声明，在 `main/CMakeLists.txt` 加源文件，在 `main.c` 的 `DEMOS[]` 注册。
-3. `enter` 创建并加载自己的 screen；`exit` 先停任务/定时器，再删 screen 和清空指针。
-4. 页面文字保持英文；说明性注释可用中文。
-5. 慢操作放工作任务，结果通过 LVGL 锁更新界面。
-6. 保留 OK 长按返回这一全局交互，不在页面重复实现。
-
-如果菜单项依赖新外设，还需扩展 `s_ok[]` 初始化与失败禁用逻辑。注意当前数组索引与 `DEMOS[]` 顺序隐式对应，修改顺序时必须同步核对。
+新增播放器功能应放在 `main/eva_player.c` 的页面和按键流程、对应的模型或独立服务模块中。耗时操作放工作任务，跨任务访问 LVGL 时加锁；页面退出时先停止访问该页面的任务或定时器，再删除对象。旧 `demo_*.c` 仅作为板级验证参考，当前 `app_main` 没有 demo 菜单或 `DEMOS[]` 注册流程。
 
 ## 12. 开发环境搭建
 
-项目要求 ESP-IDF 5.5.x，推荐与已知开发环境一致使用 **ESP-IDF 5.5.3**。不要直接使用系统中的任意 `idf.py`，也不要将 Arduino、PlatformIO 或其他 ESP-IDF 版本生成的配置混入当前工程。
+项目要求 ESP-IDF 5.5.x，推荐与已知开发环境一致使用 **ESP-IDF 5.5.4**。不要直接使用系统中的任意 `idf.py`，也不要将 Arduino、PlatformIO 或其他 ESP-IDF 版本生成的配置混入当前工程。
 
 ### 12.1 Linux / WSL 准备
 
@@ -241,16 +232,16 @@ sudo apt install -y git wget flex bison gperf python3 python3-pip \
 
 WSL 可以用于编译，但烧录和串口监视需要将 USB 设备转发给 WSL；若没有可靠的 USB 转发，可在 WSL 编译、在原生 Linux 或 Windows ESP-IDF 环境烧录。
 
-### 12.2 安装 ESP-IDF 5.5.3
+### 12.2 安装 ESP-IDF 5.5.4
 
 建议把 ESP-IDF 放在仓库之外，避免工具链文件被误提交。以下路径只是示例，可按本机目录调整：
 
 ```bash
 mkdir -p "$HOME/esp"
 cd "$HOME/esp"
-git clone --recursive --branch v5.5.3 \
-    https://github.com/espressif/esp-idf.git esp-idf-v5.5.3
-cd esp-idf-v5.5.3
+git clone --recursive --branch v5.5.4 \
+    https://github.com/espressif/esp-idf.git esp-idf-v5.5.4
+cd esp-idf-v5.5.4
 ./install.sh esp32c3
 ```
 
@@ -263,17 +254,17 @@ git submodule update --init --recursive
 每个新终端都需要激活该环境：
 
 ```bash
-source "$HOME/esp/esp-idf-v5.5.3/export.sh"
+source "$HOME/esp/esp-idf-v5.5.4/export.sh"
 idf.py --version
 ```
 
-版本输出应为 ESP-IDF v5.5.3。仓库维护者若已提供 `get_idf553` shell 快捷命令，也可以用它代替 `source .../export.sh`，但该命令不是仓库文件的一部分，不能假设所有机器都存在。
+版本输出应为 ESP-IDF v5.5.4。仓库维护者若已提供 `get_idf554` shell 快捷命令，也可以用它代替 `source .../export.sh`，但该命令不是仓库文件的一部分，不能假设所有机器都存在。
 
 可选地在自己的 shell 配置中定义快捷函数：
 
 ```bash
-get_idf553() {
-    source "$HOME/esp/esp-idf-v5.5.3/export.sh"
+get_idf554() {
+    source "$HOME/esp/esp-idf-v5.5.4/export.sh"
 }
 ```
 
@@ -284,7 +275,7 @@ get_idf553() {
 进入项目根目录后执行：
 
 ```bash
-get_idf553                    # 或 source 对应 export.sh
+get_idf554                    # 或 source 对应 export.sh
 idf.py set-target esp32c3
 idf.py reconfigure
 idf.py build
@@ -343,13 +334,13 @@ idf.py build
 | 症状 | 处理方式 |
 | --- | --- |
 | `idf.py: command not found` | 当前终端未 source ESP-IDF 的 `export.sh` |
-| IDF 版本不是 5.5.x | 激活 5.5.3 环境；不要继续用错误版本生成配置 |
+| IDF 版本不是 5.5.x | 激活 5.5.4 环境；不要继续用错误版本生成配置 |
 | Python 包或工具链缺失 | 在对应 IDF 目录重新执行 `./install.sh esp32c3` |
 | 组件下载失败 | 检查网络、代理和证书；不要伪造 `managed_components` 内容 |
 | 配置与源码不一致 | 先 `idf.py reconfigure`；仍异常时再考虑 `idf.py fullclean` |
 | 串口 permission denied | 加入 `dialout` 并重新登录，确认设备节点所属组 |
 | 能烧录但无日志 | 确认 USB Serial/JTAG 配置和正确端口，不要默认改用 GPIO21 UART TX |
-| 构建目录来自其他 IDF | 激活 5.5.3 后 `idf.py fullclean`，再 set-target/build |
+| 构建目录来自其他 IDF | 激活 5.5.4 后 `idf.py fullclean`，再 set-target/build |
 
 环境验收标准是：`idf.py --version` 正确、`idf.py build` 无错误、设备可烧录、monitor 能看到播放器启动日志，并且启动后没有持续重启或 assert。
 
@@ -358,7 +349,7 @@ idf.py build
 推荐环境：
 
 ```bash
-get_idf553
+get_idf554
 idf.py set-target esp32c3   # 新 checkout 或目标变化时
 idf.py build
 idf.py flash monitor
@@ -366,14 +357,18 @@ idf.py flash monitor
 
 配置陈旧时可执行 `idf.py fullclean`，但这会删除生成的 build 状态；不要用它处理源码工作区问题。
 
-仓库有播放器状态、ADPCM、时钟、歌名布局、像素计算和素材生成相关的主机测试。`idf.py build` 仍是最低固件构建检查，硬件变更必须上板。
+仓库有播放器状态、FAM1 格式、浏览器编码器、时钟、歌名布局、像素计算和素材生成相关的主机测试。`idf.py build` 仍是最低固件构建检查，硬件变更必须上板。`1.2.0-dev` 的固定文字、运行时字体和上传网页由构建者自备字体在本地生成；字体、字形源码和内嵌 WOFF 的网页头文件均不纳入 Git。启动音也由本地输入生成。准备步骤见 `docs/ASSET_PREPARATION.md`。此次字体与网页版本已经构建并刷入，启动日志正常；新画面及上传流程仍待本次刷机后的实机验收，不能沿用上个版本的验收结论。
 
 ### 通用上板验收
 
 - USB Serial/JTAG 有稳定启动日志，无重启循环、assert、watchdog 和持续错误。
 - I2C 扫描看到预期的 0x18；装有 CW2017 的板还应看到 0x63。
-- 开机 3 秒启动页后进入播放器，默认停止播放。
+- 开机无持续白屏，NERV 首帧与启动音及时出现；曲库扫描结束后进入播放器，默认停止播放。
 - `OK` 可播放/暂停，`UP`/`DOWN` 可上一首/下一首。
+- 长按 `UP` 进入音量页，短按 `UP`/`DOWN` 以 5% 调节，短按 `OK` 返回；重启后音量值仍在。
+- 暂停或停止时长按 `DOWN` 进入热点页，连接无密码的 `EVA-PLAYER-XXXX`，在 `http://192.168.4.1/` 上传音乐；退出、重进热点后页面仍可访问。
+- 上传后的歌曲可播放、中文歌名正常显示，重启后曲库保留；在网页删除歌曲后设备曲库也相应更新。
+- 电量条按 CW2017 SOC 分段显示；电量计不可用时不亮且播放器继续运行。
 - 一首歌播完后停留约 2 秒，再自动播放下一首。
 - 反复播放、暂停和切歌后无堆持续下降、对象悬挂或任务泄漏。
 
@@ -384,15 +379,17 @@ idf.py flash monitor
 | 引脚/I2C | 扫描、所有共享设备、启动冲突、USB 日志 |
 | LCD 序列/旋转/颜色 | 红绿蓝白黑色块、方向、边缘裁切、负片、字节序、背光 100/50/10% |
 | ADC/按键 | 松开和三键实测 mV、单击/双击/长按、不同电量下的裕量 |
-| codec/I2S | 1 kHz 音调频率/速度、录音非零且回放速度正确、格式切换、退出页面 |
+| codec/I2S | 启动音和 8/12 kHz 曲目播放速度、音量变化、暂停时资源释放、格式切换；录音改动另测旧 demo |
 | 电池 | 合理 SOC 和 mV、无电量计时正确降级、断续 I2C 的错误恢复表现 |
 | DMA/内存/UI | build 内存报告、运行时最小堆/最大块、音频与刷屏并发稳定性 |
+| 分区/热点/上传 | 备份旧数据、同时刷分区表和应用；上传、删除、重启保留、重复进出热点 |
 
 ## 14. 故障症状速查
 
 | 症状 | 优先检查 |
 | --- | --- |
 | 无画面但背光亮 | LCD CS/DC/MOSI/SCLK、厂商序列、SWRESET、DISPON、SPI mode |
+| 上电后白屏或 NERV 出现过晚 | 背光是否在首帧绘制前打开、是否把曲库扫描放在 NERV 显示之前 |
 | 颜色颠倒或怪色 | `swap_bytes`、RGB/BGR、反色配置；一次只改一个变量 |
 | 画面旋转修改无效 | `bsp_display_lvgl.c` rotation 覆盖底层 mirror |
 | 背光或串口异常 | GPIO21 与 UART0 默认 TX 冲突 |
@@ -405,6 +402,8 @@ idf.py flash monitor
 | 录音缓冲分配失败 | C3 无 PSRAM；缩短录音或改流式，检查 largest free block |
 | 电量显示 `--` | 0x63 是否应答、SOC 是否读到 >100/0xFF、profile/启动等待 |
 | 加大 UI 后 I2S NO_MEM | LCD 双缓冲/LVGL pool 与 I2S DMA 争夺内部 RAM |
+| 播放后热点页面无法打开 | 播放任务是否释放 codec/I2S 与任务栈、AP/HTTP 启动日志、客户端地址 |
+| 上传失败或曲库丢失 | 浏览器编码输出长度、分块 offset、FAM1 校验、FAT 空间和分区表 |
 
 ## 15. AI 提交前自检
 
@@ -417,6 +416,8 @@ idf.py flash monitor
 - [ ] 音频格式变化仍执行 close/open，ES8311 时钟寄存器和 `no_dac_ref` 未被误改。
 - [ ] 内存增加已同时考虑 LVGL、LCD DMA、I2S DMA、任务栈和最大连续堆。
 - [ ] `idf.py build` 通过并检查了 warnings；不能构建时说明真实原因。
+- [ ] 上传协议、编码器或目录变更运行对应的 JS/C 主机测试，并在实机验证上传与重启持久性。
+- [ ] 发布前确认 Git 索引不含本地字体及其生成字形、`web_ui.h`、启动音、用户歌曲或完整固件。
 - [ ] 需要实机验证的项目明确列出，未把“编译通过”写成“硬件验证通过”。
 - [ ] `git diff` 只包含任务范围内的改动，用户原有修改保持不动。
 

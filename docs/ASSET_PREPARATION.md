@@ -1,89 +1,35 @@
 # Asset Preparation
 
-This page explains how local assets are prepared for the player. It is written so the public repository can avoid distributing protected music and logo files.
+The source repository excludes locally generated audio, font files, font-derived UI assets, and firmware images containing them. Supply your own materials for local builds. Check redistribution rights separately before publishing a binary.
 
-## Audio
+## Startup sound
 
-The firmware expects three generated files:
-
-```text
-assets/audio/track0.adpcm
-assets/audio/track1.adpcm
-assets/audio/track2.adpcm
-```
-
-Current intended display names:
-
-| Track | Display name |
-| ---: | --- |
-| 0 | `残酷な天使のテーゼ` |
-| 1 | `One Last Kiss` |
-| 2 | `Beautiful World` |
-
-Use only audio that you are legally allowed to use on your own device. Do not publish the source songs or generated ADPCM files unless you have redistribution rights.
-
-The current local conversion target is:
-
-| Parameter | Value |
-| --- | --- |
-| Channels | mono |
-| Sample rate | 8000 Hz |
-| PCM input | signed 16-bit |
-| Firmware format | custom IMA ADPCM |
-| Bit depth after compression | 4-bit ADPCM |
-
-This is intentionally low quality. The reason is simple: the board has 8 MB Flash, no external storage, and no PSRAM.
-
-Local conversion command:
+The firmware embeds one local EVA1/IMA ADPCM startup clip. Generate it from a legally usable source:
 
 ```powershell
-.\tools\prepare_audio.ps1
+.\tools\prepare_startup_audio.ps1 -InputFile 'C:\path\to\startup.mp3'
 ```
 
-The script converts local music files into `.adpcm`. If your file names differ, adjust the script or replace the local files before running it.
+The script needs Python 3.13 and FFmpeg (or `imageio_ffmpeg` installed for Python 3.13). It creates `assets/audio/startup.adpcm` at 8 kHz, mono. This file is ignored by Git. The provided local MP3 is only an input for this checkout; it is not part of the source release.
 
-## Text Assets
+## User songs
 
-The device does not load a full Japanese font at runtime. Instead, Japanese labels and track names are rendered on the computer into small image assets.
+Songs are uploaded through the player's open Wi-Fi hotspot, not embedded in the firmware. The browser decodes the selected source file, converts it to 12 kHz or 8 kHz mono, encodes FAM1/IMA ADPCM, and sends it directly to the device. The browser also renders a CJK title as an A8 image. See [FoloToy Gallery](https://github.com/PhoenixZHC/folotoy_gallery) for the underlying format and catalog approach.
 
-Current generated text assets include:
+## UI font and upload page
 
-- top labels such as `EVANGELION`, `再生時間`, `内部`, `音楽再生`, `システム`
-- button labels such as `PREV`, `PLAY`, `NEXT`, `PAUSE`
-- track titles
-
-The project used a locally installed serif CJK font as a Mincho-style substitute. It does not bundle the licensed EVA font.
-
-Regenerate text assets locally with:
+Bring an OTF or TTF font you are permitted to use locally. It needs the Chinese and Japanese characters displayed in the player and upload page; a font missing these glyphs will produce missing text. The source repository does **not** contain a font or its generated glyph data. From the repository root, with Python 3.13, Node.js/npm, and ESP-IDF installed:
 
 ```powershell
-py tools/prepare_text_assets.py
-py tools/prepare_text_buttons.py
+py -m venv .venv
+& '.\.venv\Scripts\python.exe' -m pip install pillow fonttools
+.\tools\prepare_local_font.ps1 -FontFile 'C:\path\to\your-font.otf'
 ```
 
-If your Windows machine does not have the same font installed, install a suitable redistributable CJK serif font or update the script path.
+The script generates fixed UI masks, 14 px and 20 px ASCII LVGL font subsets, and the compressed upload page. It uses `lv_font_conv@1.5.3` through `npx`. The internal C symbol names still contain `matisse` for compatibility, but the actual shapes come from the font you supplied. The generated files are `main/eva_text_assets.c/.h`, `main/eva_text_buttons.c/.h`, `main/eva_font_matisse_14.c`, `main/eva_font_matisse_20.c`, and `main/web_ui.h`. All are excluded from Git. The page header contains a WOFF subset, CSS, JavaScript encoder, and NERV logo. Run the script again after changing `main/web_ui.html`, `main/web_style.css`, or `main/audio_adpcm.js`. Previously uploaded titles require “同步歌名” to be rendered again.
 
-## Logo Asset
+The generated font files stay local even when the chosen font permits redistribution. A fresh checkout needs to regenerate them before `idf.py build`; CMake reports a missing local asset if they are absent. `main/eva_logo_assets.c` is a separate image source.
 
-The boot screen uses a generated RGB565 image asset in:
+## Firmware images
 
-```text
-main/eva_logo_assets.c
-main/eva_logo_assets.h
-```
-
-For this project, the generated logo `.c` and `.h` files are committed with the source so the UI can build consistently.
-
-Generate a local logo asset from your own legal source image:
-
-```powershell
-py tools/prepare_nerv_logo.py path\to\logo.png
-```
-
-The converter keeps red logo pixels and turns the rest black so the boot screen remains black with a red centered mark.
-
-## Firmware Images
-
-A merged `.bin` image includes the application and embedded assets. If the embedded music is protected, the merged image is also not safe to publish.
-
-For public releases, prefer source code plus instructions. Share a binary only when every embedded asset is redistributable.
+A merged `.bin` includes the embedded startup sound and generated UI images. Do not redistribute protected assets or a binary containing them without the required rights.

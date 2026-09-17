@@ -5,6 +5,7 @@
 #include "bsp_battery.h"
 #include "bsp_pins.h"      // 错误日志里要打印 BSP_LCD_* 引脚号
 #include "eva_player.h"
+#include "eva_music_store.h"
 #include "esp_log.h"
 
 static const char *TAG = "main";
@@ -18,6 +19,7 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user) {
 }
 
 void app_main(void) {
+    bsp_display_backlight_prepare();
     ESP_LOGI(TAG, "FoloToy EVA player 启动");
 
     bsp_i2c_init();
@@ -31,16 +33,24 @@ void app_main(void) {
                  BSP_LCD_MOSI, BSP_LCD_SCLK, BSP_LCD_CS, BSP_LCD_DC, BSP_LCD_BL);
         return;
     }
-    bsp_display_backlight(100);
-
     bool button_ok = (bsp_button_init(on_key, NULL) == ESP_OK);
-    bool audio_ok = (bsp_audio_init() == ESP_OK);
     bool battery_ok = (bsp_battery_init() == ESP_OK);
+    esp_err_t nvs_err = eva_music_store_prepare();
+    if (nvs_err != ESP_OK)
+        ESP_LOGE(TAG, "NVS init failed: %s", esp_err_to_name(nvs_err));
 
     if (bsp_lvgl_lock(1000)) {
-        eva_player_start(audio_ok);
+        eva_player_start(false, battery_ok);
         bsp_lvgl_unlock();
     }
 
-    ESP_LOGI(TAG, "就绪:Button=%d Audio=%d Battery=%d", button_ok, audio_ok, battery_ok);
+    bool storage_ok = nvs_err == ESP_OK && eva_music_store_init() == ESP_OK;
+    if (bsp_lvgl_lock(1000)) {
+        eva_player_set_storage_ready(storage_ok);
+        bsp_lvgl_unlock();
+    } else {
+        ESP_LOGE(TAG, "could not publish storage state to player");
+    }
+
+    ESP_LOGI(TAG, "就绪:Button=%d Storage=%d Battery=%d", button_ok, storage_ok, battery_ok);
 }

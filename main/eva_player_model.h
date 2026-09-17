@@ -24,11 +24,8 @@ typedef enum {
 } eva_player_control_t;
 
 typedef struct {
-    const char *title;
-} eva_player_track_t;
-
-typedef struct {
     size_t track_index;
+    size_t track_count;
     bool playing;
     bool auto_advance_pending;
     bool standby;
@@ -37,7 +34,8 @@ typedef struct {
     uint32_t auto_advance_at_ms;
 } eva_player_model_t;
 
-void eva_player_init(eva_player_model_t *model);
+void eva_player_init(eva_player_model_t *model, size_t track_count);
+void eva_player_set_track_count(eva_player_model_t *model, size_t track_count);
 void eva_player_handle_key(eva_player_model_t *model, eva_player_key_t key,
                            eva_player_key_event_t event);
 void eva_player_stop(eva_player_model_t *model);
@@ -52,6 +50,4 @@ size_t eva_player_track_index(const eva_player_model_t *model);
 bool eva_player_is_playing(const eva_player_model_t *model);
 bool eva_player_is_standby(const eva_player_model_t *model);
 eva_player_control_t eva_player_active_control(const eva_player_model_t *model);
-const eva_player_track_t *eva_player_current_track(const eva_player_model_t *model);
-const eva_player_track_t *eva_player_track_at(size_t index);
-size_t eva_player_track_count(void);
+size_t eva_player_track_count(const eva_player_model_t *model);

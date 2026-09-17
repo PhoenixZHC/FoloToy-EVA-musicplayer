@@ -6,17 +6,17 @@ This repository is an ESP-IDF application project for the ESP32-C3-based FoloToy
 
 - `components/bsp/include/`: public BSP APIs and the hardware pin/configuration source of truth (`bsp_pins.h`).
 - `components/bsp/src/`: display, button, audio, battery, and shared-I2C implementations.
-- `main/`: EVA player application, generated UI assets, playback model, and legacy `demo_*.c` hardware validation references.
-- `tests/`: host-side tests for player state, ADPCM, clock, title layout, and generated assets.
+- `main/`: EVA player, dynamic FAT music catalog, open Wi-Fi upload page and codec, generated UI assets, and legacy `demo_*.c` hardware references.
+- `tests/`: host-side tests for player state, FAM1/ADPCM, browser codec, clock, title layout, and generated assets.
 - `docs/`: hardware, architecture, asset, release, and contribution documentation.
 - `sdkconfig.defaults`: reproducible target, console, LVGL, and memory defaults.
 - `README.md`: current application behavior, build instructions, asset policy, and validation notes.
 
-Keep reusable hardware logic in `components/bsp`; keep player UI, playback behavior, and generated application assets in `main`.
+Keep reusable hardware logic in `components/bsp`; keep player UI and playback behavior in `main`. Font-derived application assets are generated locally from a builder-supplied font and are excluded from Git; see `docs/ASSET_PREPARATION.md`.
 
 ## Build, Test, and Development Commands
 
-Use ESP-IDF 5.5.x:
+Use ESP-IDF 5.5.x. On a fresh checkout, first prepare a local startup clip and font assets using `docs/ASSET_PREPARATION.md`:
 
 ```bash
 # First activate ESP-IDF 5.5.x for your local shell.
@@ -26,7 +26,7 @@ idf.py flash monitor          # Flash the connected board and open logs
 idf.py fullclean              # Remove generated build state when configuration is stale
 ```
 
-Host-side tests exist under `tests/`. Treat a clean `idf.py build` and relevant host tests as the minimum automated check, then run every applicable item in the README acceptance checklist on real hardware.
+Host-side Python, C, and JavaScript tests exist under `tests/`. Treat a clean `idf.py build` and relevant host tests as the minimum automated check. For device changes, use the acceptance items in `docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md` and distinguish earlier device checks from the current build.
 
 ## Coding Style & Naming Conventions
 

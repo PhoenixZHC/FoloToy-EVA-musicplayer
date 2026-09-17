@@ -1,9 +1,14 @@
 import struct
 from pathlib import Path
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 AUDIO_DIR = ROOT / "assets" / "audio"
+pytestmark = pytest.mark.skipif(
+    not (AUDIO_DIR / "startup.adpcm").is_file(),
+    reason="local startup audio is required for asset tests",
+)
 
 
 def read_header(path):
@@ -14,26 +19,20 @@ def read_header(path):
     return magic, sample_rate, predictor, index, reserved, flags, sample_count
 
 
-def test_adpcm_assets_are_present_and_fit_flash_budget():
-    paths = [AUDIO_DIR / f"track{i}.adpcm" for i in range(3)]
-
-    for path in paths:
-        assert path.exists(), path
-        assert path.stat().st_size > 100_000
-
-    total = sum(path.stat().st_size for path in paths)
-    assert total < 3_600_000
+def test_startup_audio_is_present_and_small():
+    path = AUDIO_DIR / "startup.adpcm"
+    assert path.exists(), path
+    assert 16 < path.stat().st_size < 200_000
 
 
-def test_adpcm_assets_use_expected_format():
-    for index in range(3):
-        magic, sample_rate, predictor, adpcm_index, reserved, flags, sample_count = read_header(
-            AUDIO_DIR / f"track{index}.adpcm"
-        )
-        assert magic == b"EVA1"
-        assert sample_rate == 8000
-        assert -32768 <= predictor <= 32767
-        assert 0 <= adpcm_index <= 88
-        assert reserved == 0
-        assert flags == 0
-        assert sample_count > 8000
+def test_startup_audio_uses_expected_format():
+    magic, sample_rate, predictor, adpcm_index, reserved, flags, sample_count = read_header(
+        AUDIO_DIR / "startup.adpcm"
+    )
+    assert magic == b"EVA1"
+    assert sample_rate == 8000
+    assert -32768 <= predictor <= 32767
+    assert 0 <= adpcm_index <= 88
+    assert reserved == 0
+    assert flags == 0
+    assert sample_count > 0

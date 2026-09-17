@@ -8,6 +8,8 @@
 #include <stdint.h>
 
 // 初始化 SPI 总线、面板、厂商寄存器、背光 LEDC。成功后屏幕已上电但内容未定。
+// 在其他外设初始化前先把背光引脚拉低，避免面板未绘制时露出白屏。
+void bsp_display_backlight_prepare(void);
 esp_err_t bsp_display_init(void);
 
 // 取底层面板句柄。想直接 esp_lcd_panel_draw_bitmap 画,或接 LVGL 以外的 GUI 时用。

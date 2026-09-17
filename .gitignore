@@ -3,6 +3,7 @@ build_*/
 sdkconfig
 sdkconfig.old
 managed_components/
+.venv/
 dependencies.lock
 .vscode/
 build_test_*.exe
@@ -41,6 +42,20 @@ docs/superpowers/
 assets/audio/*.adpcm
 assets/audio/*.wav
 !assets/audio/README.md
+
+# Local fonts and all generated font derivatives.
+FOT-MatissePro-EB.otf
+*.otf
+*.ttf
+*.woff
+*.woff2
+main/eva_text_assets.c
+main/eva_text_assets.h
+main/eva_text_buttons.c
+main/eva_text_buttons.h
+main/eva_font_matisse_14.c
+main/eva_font_matisse_20.c
+main/web_ui.h
 
 # Firmware images can embed protected audio/logo assets.
 release/

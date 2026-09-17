@@ -4,6 +4,7 @@
 #include "bsp_pins.h"
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
@@ -16,6 +17,13 @@ static const char *TAG = "bsp_disp";
 static esp_lcd_panel_handle_t    s_panel;
 static esp_lcd_panel_io_handle_t s_io;
 static bool                      s_bl_ready;
+
+void bsp_display_backlight_prepare(void) {
+    if (BSP_LCD_BL < 0) return;
+    gpio_reset_pin((gpio_num_t)BSP_LCD_BL);
+    gpio_set_level((gpio_num_t)BSP_LCD_BL, 0);
+    gpio_set_direction((gpio_num_t)BSP_LCD_BL, GPIO_MODE_OUTPUT);
+}
 
 // ---------------------------------------------------------------------------
 // ST7789P3 厂商专属初始化序列(porch / power / gamma)。
@@ -82,6 +90,8 @@ static void backlight_init(void) {
 
 esp_err_t bsp_display_init(void) {
     if (s_panel) return ESP_OK;
+
+    bsp_display_backlight_prepare();
 
     spi_bus_config_t bus = {
         .mosi_io_num = BSP_LCD_MOSI,

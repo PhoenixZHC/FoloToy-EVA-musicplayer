@@ -8,6 +8,7 @@
 
 // 初始化 codec 与 I2S。内部会调 bsp_i2c_init()(幂等),无需外部先调。
 esp_err_t bsp_audio_init(void);
+esp_err_t bsp_audio_deinit(void);
 
 // 设置采样格式。同格式重复调用是廉价的(直接复用已打开的 codec)。
 //

@@ -1,12 +1,15 @@
 import argparse
+import os
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-FONT_PATH = r"C:\Windows\Fonts\msgothic.ttc"
+FONT_PATH = Path(os.environ.get("EVA_FONT_PATH", Path(__file__).resolve().parents[1] / "FOT-MatissePro-EB.otf"))
 
 def render_text(text, font_size):
-    font = ImageFont.truetype(FONT_PATH, font_size, index=0)
+    if not FONT_PATH.is_file():
+        raise FileNotFoundError(f"Supply your own font with EVA_FONT_PATH: {FONT_PATH}")
+    font = ImageFont.truetype(FONT_PATH, font_size)
 
     probe = Image.new("L", (1, 1), 0)
     draw = ImageDraw.Draw(probe)
@@ -71,7 +74,7 @@ def build_header(descriptors):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--font-size", type=int, default=18)
+    parser.add_argument("--font-size", type=int, default=13)
     parser.add_argument("--header", default="main/eva_text_buttons.h")
     parser.add_argument("--source", default="main/eva_text_buttons.c")
     args = parser.parse_args()
