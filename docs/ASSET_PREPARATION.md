@@ -14,7 +14,36 @@ The script needs Python 3.13 and FFmpeg (or `imageio_ffmpeg` installed for Pytho
 
 ## User songs
 
-Songs are uploaded through the player's open Wi-Fi hotspot, not embedded in the firmware. The browser decodes the selected source file, converts it to 12 kHz or 8 kHz mono, encodes FAM1/IMA ADPCM, and sends it directly to the device. The browser also renders a CJK title as an A8 image. See [FoloToy Gallery](https://github.com/PhoenixZHC/folotoy_gallery) for the underlying format and catalog approach.
+Songs live as ordinary files in the writable FAT partition. They can be uploaded through the player's open Wi-Fi hotspot or included in a complete factory image using the workflow below. The browser decodes the selected source file, converts it to 12 kHz or 8 kHz mono, encodes FAM1/IMA ADPCM, and sends it directly to the device. The browser also renders a CJK title as an A8 image. See [FoloToy Gallery](https://github.com/PhoenixZHC/folotoy_gallery) for the underlying format and catalog approach.
+
+### Optional deletable factory songs
+
+`tools/prepare_music.py` uses FFmpeg and the existing browser encoder (`main/audio_adpcm.js`), plus Pillow/fonttools for 34-pixel-high ETT1 title masks. Run it with a Python environment containing those packages and Node.js on PATH. FFmpeg may be on PATH, supplied with `--ffmpeg`, or provided by `imageio_ffmpeg`. Each `--track` accepts a local audio path and a display title. For example, after preparing `.venv` as below:
+
+```powershell
+$musicArgs = @(
+    'tools/prepare_music.py', '--font', 'C:\path\to\your-font.otf',
+    '--track', 'C:\music\first.mp3', 'First song',
+    '--track', 'C:\music\second.mp3', 'Second song',
+    '--track', 'C:\music\third.mp3', 'Third song'
+)
+& '.\.venv\Scripts\python.exe' @musicArgs
+```
+
+The default output is Git-ignored `assets/preset_music/`: consecutive `a000.fam` / `t000.bin` pairs. It must be empty before generation; use `--output` with a new directory when changing the playlist. The default rate is 12 kHz; `--sample-rate 8000` explicitly selects a smaller file. Invalid titles, missing glyphs, songs longer than six minutes, and oversized files fail visibly. The script does not silently lower quality or replace missing glyphs.
+
+Activate ESP-IDF 5.5.x, then build and package with its Python interpreter (which includes the FAT generator dependencies):
+
+```powershell
+idf.py -B build_preset build
+python tools/package_factory.py --build build_preset --output release/EVA-with-music.bin
+```
+
+`package_factory.py` reads the built partition table and checks the 8 MB Flash / 4096-byte wear-levelling sector configuration. It generates a writable FAT image using ESP-IDF's `WLFATFS`, extracts every song and title in memory to verify byte equality, and combines it with the built bootloader, partition table, and application. Outputs include the complete 8 MiB image, `.music.bin`, `.sha256`, and a JSON verification report. Existing packages are never overwritten. `--music` selects an alternative prepared directory; `--idf-path` can identify ESP-IDF if not activated.
+
+For the example above, `release/EVA-with-music.bin` is the only file needed for a complete flash. `EVA-with-music.music.bin` contains only the music partition and must not be used as a full image at `0x0`; `.json` and `.sha256` are verification records. See [Releasing](RELEASING.md) for the current local package name and its verification status.
+
+The complete image is intended for flashing at `0x0` and **replaces existing music and settings**. Normal `idf.py flash` only writes the application components and does not install these presets. Presets occupy music storage, not app space or additional playback RAM. The existing music-management page can delete them and reuse their space, including deleting every song. Rebooting or an application-only update does not restore deleted presets. Reflashing the complete factory image restores its initial playlist. This packaging workflow never connects to or flashes a device.
 
 ## UI font and upload page
 

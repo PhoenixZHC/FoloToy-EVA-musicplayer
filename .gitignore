@@ -41,6 +41,8 @@ docs/superpowers/
 # Generated embedded audio. Users should create these locally.
 assets/audio/*.adpcm
 assets/audio/*.wav
+assets/preset_music/
+*.fam
 !assets/audio/README.md
 
 # Local fonts and all generated font derivatives.

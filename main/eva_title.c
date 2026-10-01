@@ -1,4 +1,5 @@
 #include "eva_title.h"
+#include "audio_catalog.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -12,7 +13,9 @@ static lv_image_dsc_t s_image = {
 
 bool eva_title_path(uint32_t index, char *out, size_t cap)
 {
-    int n = snprintf(out, cap, "/fs/t%03lu.bin", (unsigned long)index);
+    audio_track_t track;
+    if (!audio_catalog_get(index, &track)) return false;
+    int n = snprintf(out, cap, "/fs/t%03lu.bin", (unsigned long)track.file_id);
     return n > 0 && (size_t)n < cap;
 }
 

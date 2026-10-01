@@ -18,6 +18,7 @@ This project targets a small ESP32-C3 device with 8 MB Flash and no PSRAM. Keep 
 - Hold the LVGL lock when non-LVGL tasks touch LVGL objects.
 - After editing `web_ui.html`, `web_style.css`, or `audio_adpcm.js`, regenerate the ignored `web_ui.h` using `tools/prepare_local_font.ps1` and check browser behavior.
 - Do not increase image, font, audio, task stack, DMA, or LVGL buffers without checking Flash and internal RAM.
+- Keep persistent song slots separate from visible playlist indices. Delete must not rename surviving files. Preserve catalog revision checks on delete/title requests and never automatically retry a stale destructive request.
 
 ## Asset Rules
 
@@ -36,16 +37,19 @@ See [docs/GIT_RULES.md](docs/GIT_RULES.md) for the exact list of files that shou
 
 ## Required Checks
 
-Before opening a pull request, generate local assets as described in [asset preparation](docs/ASSET_PREPARATION.md), then run the relevant host tests and an ESP-IDF build. Asset-dependent Python tests are skipped when the corresponding local font or startup sound is absent.
+Before opening a pull request, generate local assets as described in [asset preparation](docs/ASSET_PREPARATION.md), then run the relevant host tests and an ESP-IDF build. Python tests require pytest, package-format tests also require Node.js, and the HTTP-handler test requires host GCC, generated `web_ui.h`, and three locally prepared preset tracks. Asset-dependent tests skip when their inputs are absent; report skips rather than counting them as passes.
 
 ```powershell
 $env:PYTHONPATH = "tools"
 py -m pytest tests
 node tests/test_audio_adpcm.js
+node tests/test_web_catalog.js
 idf.py build
 ```
 
 For UI, button, audio, display, partition, or memory changes, also test on real hardware and record what was observed. Build results and an older hardware check do not establish that the newest font and upload-page revision has passed on-device acceptance.
+
+Run the relevant C tests as well. `test_audio_catalog.c` covers normal, failure, and gap modes; `test_preset_catalog.c` exercises deletion and restart with prepared presets. Both modify their input directories: supply disposable copies under an ignored `build_test_*` directory, never the original preset assets. The Python HTTP test creates its own isolated copy and ESP/network stubs; these stubs are not firmware inputs. A successful full-image flash and data checksum are separate evidence from boot, playback, and power-loss acceptance.
 
 ## Pull Request Notes
 

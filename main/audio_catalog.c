@@ -103,8 +103,8 @@ static bool inspect_track(const char *path, audio_track_t *track)
 bool audio_catalog_name_path(const audio_catalog_t *catalog, uint32_t index,
                              char *out, size_t out_size)
 {
-    if (!catalog || !out || index >= AUDIO_MAX_TRACKS) return false;
-    return make_path(out, out_size, catalog->root, index);
+    if (!catalog || !out || index >= catalog->count) return false;
+    return make_path(out, out_size, catalog->root, catalog->items[index].file_id);
 }
 
 bool audio_catalog_temp_name_path(const audio_catalog_t *catalog,
@@ -113,14 +113,6 @@ bool audio_catalog_temp_name_path(const audio_catalog_t *catalog,
     if (!catalog || !out) return false;
     int written = snprintf(out, out_size, "%s/%s", catalog->root, AUDIO_TEMP_NAME);
     return written > 0 && (size_t)written < out_size;
-}
-
-static bool any_audio_file(const audio_catalog_t *catalog, uint32_t index)
-{
-    char path[AUDIO_PATH_MAX];
-    uint32_t ignored;
-    return audio_catalog_name_path(catalog, index, path, sizeof(path)) &&
-           get_file_size(path, &ignored);
 }
 
 bool audio_catalog_scan_path(audio_catalog_t *catalog, const char *root)
@@ -134,24 +126,19 @@ bool audio_catalog_scan_path(audio_catalog_t *catalog, const char *root)
 
     for (uint32_t index = 0; index < AUDIO_MAX_TRACKS; index++) {
         char path[AUDIO_PATH_MAX];
-        uint32_t ignored;
-        if (!audio_catalog_name_path(catalog, index, path, sizeof(path)))
+        struct stat st;
+        if (!make_path(path, sizeof(path), root, index))
             return catalog_fail(catalog, AUDIO_CATALOG_PATH, index);
-        if (!get_file_size(path, &ignored)) {
-            for (uint32_t later = index + 1u; later <= AUDIO_MAX_TRACKS; later++) {
-                if (any_audio_file(catalog, later))
-                    return catalog_fail(catalog, AUDIO_CATALOG_GAP, later);
-            }
-            catalog->count = index;
-            return true;
+        if (stat(path, &st) != 0) {
+            if (errno == ENOENT) continue;
+            return catalog_fail(catalog, AUDIO_CATALOG_IO, index);
         }
-        if (!inspect_track(path, &catalog->items[index]))
+        audio_track_t *track = &catalog->items[catalog->count];
+        if (!inspect_track(path, track))
             return catalog_fail(catalog, AUDIO_CATALOG_INVALID_FILE, index);
-        catalog->count = index + 1u;
+        track->file_id = index;
+        catalog->count++;
     }
-
-    if (any_audio_file(catalog, AUDIO_MAX_TRACKS))
-        return catalog_fail(catalog, AUDIO_CATALOG_GAP, AUDIO_MAX_TRACKS);
     return true;
 }
 
@@ -164,15 +151,33 @@ bool audio_catalog_commit_temp_path(audio_catalog_t *catalog, uint32_t expected_
     audio_track_t inspected;
     uint32_t actual_size = 0;
     if (!audio_catalog_temp_name_path(catalog, temp, sizeof(temp)) ||
-        !audio_catalog_name_path(catalog, catalog->count, final, sizeof(final)) ||
         !get_file_size(temp, &actual_size) ||
         actual_size != expected_size ||
-        get_file_size(final, NULL) ||
         !inspect_track(temp, &inspected)) {
         return false;
     }
+    uint32_t slot;
+    for (slot = 0; slot < AUDIO_MAX_TRACKS; slot++) {
+        struct stat st;
+        if (!make_path(final, sizeof(final), catalog->root, slot)) return false;
+        if (stat(final, &st) == 0) continue;
+        if (errno != ENOENT) return false;
+        break;
+    }
+    if (slot == AUDIO_MAX_TRACKS) return false;
+    /* A prior interrupted operation must not give the new song an old title. */
+    char title[AUDIO_PATH_MAX];
+    if (!make_title_path(title, sizeof(title), catalog->root, slot) ||
+        (remove(title) != 0 && errno != ENOENT)) return false;
     if (rename(temp, final) != 0) return false;
-    catalog->items[catalog->count++] = inspected;
+    inspected.file_id = slot;
+    uint32_t index = 0;
+    while (index < catalog->count && catalog->items[index].file_id < slot) index++;
+    memmove(&catalog->items[index + 1u], &catalog->items[index],
+            (catalog->count - index) * sizeof(catalog->items[0]));
+    catalog->items[index] = inspected;
+    catalog->count++;
+    catalog->layout_generation++;
     if (committed) *committed = inspected;
     return true;
 }
@@ -181,31 +186,18 @@ bool audio_catalog_delete_path(audio_catalog_t *catalog, uint32_t index)
 {
     if (!catalog || !catalog->healthy || index >= catalog->count) return false;
     char path[AUDIO_PATH_MAX];
-    if (!audio_catalog_name_path(catalog, index, path, sizeof(path)) ||
-        remove(path) != 0) return false;
-
     char title[AUDIO_PATH_MAX];
-    if (!make_title_path(title, sizeof(title), catalog->root, index))
-        return catalog_fail(catalog, AUDIO_CATALOG_PATH, index);
-    if (remove(title) != 0 && errno != ENOENT)
-        return catalog_fail(catalog, AUDIO_CATALOG_IO, index);
-
+    uint32_t slot = catalog->items[index].file_id;
+    if (!audio_catalog_name_path(catalog, index, path, sizeof(path)) ||
+        !make_title_path(title, sizeof(title), catalog->root, slot)) return false;
+    /* Keep other songs in their original slots. If interrupted here, this
+       song either remains (possibly without its optional mask) or is absent.
+       Both states can be scanned on boot without a journal or renumbering. */
+    if (remove(title) != 0 && errno != ENOENT) return false;
+    if (remove(path) != 0) return false;
     catalog->layout_generation++;
-    for (uint32_t source = index + 1u; source < catalog->count; source++) {
-        char from[AUDIO_PATH_MAX], to[AUDIO_PATH_MAX];
-        if (!audio_catalog_name_path(catalog, source, from, sizeof(from)) ||
-            !audio_catalog_name_path(catalog, source - 1u, to, sizeof(to)) ||
-            rename(from, to) != 0) {
-            return catalog_fail(catalog, AUDIO_CATALOG_IO, source);
-        }
-        char title_from[AUDIO_PATH_MAX], title_to[AUDIO_PATH_MAX];
-        if (!make_title_path(title_from, sizeof(title_from), catalog->root, source) ||
-            !make_title_path(title_to, sizeof(title_to), catalog->root, source - 1u))
-            return catalog_fail(catalog, AUDIO_CATALOG_PATH, source);
-        if (rename(title_from, title_to) != 0 && errno != ENOENT)
-            return catalog_fail(catalog, AUDIO_CATALOG_IO, source);
-        catalog->items[source - 1u] = catalog->items[source];
-    }
+    memmove(&catalog->items[index], &catalog->items[index + 1u],
+            (catalog->count - index - 1u) * sizeof(catalog->items[0]));
     catalog->count--;
     memset(&catalog->items[catalog->count], 0, sizeof(catalog->items[0]));
     return true;
@@ -268,10 +260,19 @@ esp_err_t audio_catalog_start_add(uint32_t expected_size, FILE **file)
     return ESP_OK;
 }
 
-esp_err_t audio_catalog_finish_add(void)
+esp_err_t audio_catalog_finish_add(uint32_t *index)
 {
     if (!s_upload_active) return ESP_ERR_INVALID_STATE;
-    bool ok = audio_catalog_commit_temp_path(&s_catalog, s_upload_expected_size, NULL);
+    audio_track_t committed;
+    bool ok = audio_catalog_commit_temp_path(&s_catalog, s_upload_expected_size, &committed);
+    if (ok && index) {
+        for (uint32_t i = 0; i < s_catalog.count; i++) {
+            if (s_catalog.items[i].file_id == committed.file_id) {
+                *index = i;
+                break;
+            }
+        }
+    }
     if (!ok) {
         char temp[AUDIO_PATH_MAX];
         if (audio_catalog_temp_name_path(&s_catalog, temp, sizeof(temp)))

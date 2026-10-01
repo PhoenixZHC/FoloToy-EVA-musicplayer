@@ -13,3 +13,4 @@ This is an unofficial fan-made firmware project. It is not affiliated with, endo
 
 If you publish a fork, make sure you only include assets you have the right to redistribute. When in doubt, publish source code and asset-generation instructions only.
 
+Optional preset-song packaging does not change these terms. The source checkout provides conversion and packaging tools, not the three local song recordings or their generated FAM1/title files. A full image can contain those recordings, the startup clip, and font derivatives; they are not covered by the source-code license.

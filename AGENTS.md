@@ -7,7 +7,8 @@ This repository is an ESP-IDF application project for the ESP32-C3-based FoloToy
 - `components/bsp/include/`: public BSP APIs and the hardware pin/configuration source of truth (`bsp_pins.h`).
 - `components/bsp/src/`: display, button, audio, battery, and shared-I2C implementations.
 - `main/`: EVA player, dynamic FAT music catalog, open Wi-Fi upload page and codec, generated UI assets, and legacy `demo_*.c` hardware references.
-- `tests/`: host-side tests for player state, FAM1/ADPCM, browser codec, clock, title layout, and generated assets.
+- `tests/`: host-side tests for player state, FAM1/ADPCM, catalog recovery, HTTP revisions, browser requests, packaging, clock, title layout, and generated assets.
+- `tools/`: local font/audio preparation and optional deletable-preset/full-image packaging; generated assets and `release/` remain Git-ignored.
 - `docs/`: hardware, architecture, asset, release, and contribution documentation.
 - `sdkconfig.defaults`: reproducible target, console, LVGL, and memory defaults.
 - `README.md`: current application behavior, build instructions, asset policy, and validation notes.

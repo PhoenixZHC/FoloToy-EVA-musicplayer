@@ -1,6 +1,8 @@
 #include "eva_wifi.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include "audio_catalog.h"
 #include "eva_music_store.h"
@@ -13,6 +15,7 @@
 #include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_system.h"
+#include "esp_random.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 
@@ -23,6 +26,34 @@ static bool s_netif_ready;
 static bool s_wifi_ready;
 static volatile bool s_upload_busy;
 static char s_ssid[32] = "EVA-PLAYER";
+static char s_session[17];
+
+static void catalog_revision(char *out, size_t size)
+{
+    snprintf(out, size, "%s-%lu", s_session,
+             (unsigned long)audio_catalog_generation());
+}
+
+/* Requests are handled serially by HTTPD. Bind the visible index to the
+   exact catalog and AP session from which the browser obtained it. */
+static bool current_track_query(httpd_req_t *req, uint32_t *index)
+{
+    char query[128], value[16], received[40], current[40];
+    if (!audio_catalog_healthy() ||
+        httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "i", value, sizeof(value)) != ESP_OK ||
+        httpd_query_key_value(query, "r", received, sizeof(received)) != ESP_OK)
+        return false;
+    catalog_revision(current, sizeof(current));
+    if (strcmp(received, current) != 0 || value[0] < '0' || value[0] > '9')
+        return false;
+    char *end;
+    errno = 0;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if (errno || *end || parsed >= audio_catalog_count()) return false;
+    *index = (uint32_t)parsed;
+    return true;
+}
 
 bool eva_wifi_running(void) { return s_server != NULL; }
 const char *eva_wifi_ssid(void) { return s_ssid; }
@@ -71,10 +102,12 @@ static esp_err_t list_get(httpd_req_t *req)
     if (count > AUDIO_MAX_TRACKS || eva_music_store_space(&total, &free) != ESP_OK)
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "storage info");
     char line[256];
+    char revision[40];
+    catalog_revision(revision, sizeof(revision));
     int len = snprintf(line, sizeof(line),
-                       "{\"count\":%lu,\"total\":%lu,\"free\":%lu,\"healthy\":%s,\"tracks\":[",
+                       "{\"count\":%lu,\"total\":%lu,\"free\":%lu,\"healthy\":%s,\"revision\":\"%s\",\"tracks\":[",
                        (unsigned long)count, (unsigned long)total,
-                       (unsigned long)free, healthy ? "true" : "false");
+                       (unsigned long)free, healthy ? "true" : "false", revision);
     if (len <= 0 || len >= (int)sizeof(line))
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
@@ -102,6 +135,7 @@ static esp_err_t upload_post(httpd_req_t *req)
     s_upload_busy = true;
     FILE *file = NULL;
     esp_err_t response = ESP_OK;
+    uint32_t index = 0;
     uint32_t size = (uint32_t)req->content_len;
     uint32_t free = 0;
     if (req->content_len != size || size == 0 || size > FAM1_MAX_FILE_SIZE) {
@@ -141,15 +175,16 @@ static esp_err_t upload_post(httpd_req_t *req)
         goto done;
     }
     file = NULL;
-    if (audio_catalog_finish_add() != ESP_OK) {
+    if (audio_catalog_finish_add(&index) != ESP_OK) {
         response = send_status(req, "422 Unprocessable Content", "audio validation failed");
         goto done;
     }
     ESP_LOGI(TAG, "song uploaded bytes=%lu count=%lu", (unsigned long)size,
              (unsigned long)audio_catalog_count());
-    char result[32];
-    snprintf(result, sizeof(result), "{\"index\":%lu}",
-             (unsigned long)(audio_catalog_count() - 1U));
+    char result[96], revision[40];
+    catalog_revision(revision, sizeof(revision));
+    snprintf(result, sizeof(result), "{\"index\":%lu,\"revision\":\"%s\"}",
+             (unsigned long)index, revision);
     httpd_resp_set_type(req, "application/json");
     response = httpd_resp_sendstr(req, result);
 done:
@@ -161,14 +196,9 @@ done:
 static esp_err_t title_post(httpd_req_t *req)
 {
     if (s_upload_busy) return send_status(req, "409 Conflict", "upload busy");
-    char query[32], value[16];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
-        httpd_query_key_value(query, "i", value, sizeof(value)) != ESP_OK)
-        return send_status(req, "400 Bad Request", "missing index");
-    unsigned index;
-    char tail;
-    if (sscanf(value, "%u%c", &index, &tail) != 1 || index >= audio_catalog_count())
-        return send_status(req, "400 Bad Request", "invalid index");
+    uint32_t index;
+    if (!current_track_query(req, &index))
+        return send_status(req, "409 Conflict", "catalog changed; refresh before retrying");
     if (req->content_len < 8 || req->content_len > EVA_TITLE_MAX_BYTES)
         return send_status(req, "413 Payload Too Large", "invalid title size");
     s_upload_busy = true;
@@ -220,14 +250,9 @@ done:
 static esp_err_t delete_post(httpd_req_t *req)
 {
     if (s_upload_busy) return send_status(req, "409 Conflict", "upload busy");
-    char query[32], value[16];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
-        httpd_query_key_value(query, "i", value, sizeof(value)) != ESP_OK)
-        return send_status(req, "400 Bad Request", "missing index");
-    unsigned index;
-    char tail;
-    if (sscanf(value, "%u%c", &index, &tail) != 1 || index >= audio_catalog_count())
-        return send_status(req, "400 Bad Request", "invalid index");
+    uint32_t index;
+    if (!current_track_query(req, &index))
+        return send_status(req, "409 Conflict", "catalog changed; refresh before retrying");
     s_upload_busy = true;
     esp_err_t result = audio_catalog_delete(index);
     s_upload_busy = false;
@@ -272,6 +297,8 @@ esp_err_t eva_wifi_start(void)
     http.send_wait_timeout = 10;
     http.lru_purge_enable = true;
     http.stack_size = 6144;
+    snprintf(s_session, sizeof(s_session), "%08lx%08lx",
+             (unsigned long)esp_random(), (unsigned long)esp_random());
     err = httpd_start(&s_server, &http);
     if (err != ESP_OK) goto fail;
     const httpd_uri_t routes[] = {

@@ -47,7 +47,8 @@ void eva_player_handle_key(eva_player_model_t *model, eva_player_key_t key,
             eva_player_advance_after_finish(model);
             return;
         }
-        if (key == EVA_PLAYER_KEY_UP || key == EVA_PLAYER_KEY_DOWN) {
+        if (event == EVA_PLAYER_KEY_CLICK &&
+            (key == EVA_PLAYER_KEY_UP || key == EVA_PLAYER_KEY_DOWN)) {
             model->auto_advance_pending = false;
         }
     }

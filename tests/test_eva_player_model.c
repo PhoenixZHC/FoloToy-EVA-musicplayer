@@ -264,8 +264,22 @@ static void test_manual_track_change_cancels_end_pause(void)
     assert(!eva_player_auto_advance_pending(&model));
 }
 
+static void test_long_volume_key_preserves_end_pause(void)
+{
+    eva_player_model_t model;
+    eva_player_init(&model, 3);
+    eva_player_finish_track(&model, 91011, 1000);
+    eva_player_handle_key(&model, EVA_PLAYER_KEY_UP, EVA_PLAYER_KEY_PRESS);
+    assert(eva_player_auto_advance_pending(&model));
+    /* The screen handles long UP itself; the model must retain the deadline. */
+    assert(eva_player_auto_advance_due(&model, 3000));
+    eva_player_advance_after_finish(&model);
+    assert(model.track_index == 1 && model.playing && model.elapsed_ms == 0);
+}
+
 int main(void)
 {
+    test_long_volume_key_preserves_end_pause();
     test_initial_state();
     test_empty_catalog_blocks_play_and_navigation();
     test_catalog_shrink_clamps_index();

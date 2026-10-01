@@ -1,5 +1,5 @@
 # FoloToy EVA Player 自定义分区表(8MB Flash)
-# 音乐独立保存于 FAT 分区，固件不再包含用户歌曲。
+# 音乐独立保存于可写 FAT 分区；完整出厂镜像可预置可删除的普通歌曲文件。
 # Name,   Type, SubType, Offset,  Size,     Flags
 nvs,      data, nvs,     0x9000,  0x6000,
 phy_init, data, phy,     0xf000,  0x1000,

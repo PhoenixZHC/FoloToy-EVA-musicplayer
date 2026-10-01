@@ -16,6 +16,10 @@ The CW2017 fuel gauge supplies a 0–100% state of charge. The player selects on
 
 The 8 MB Flash table allocates 2 MB to the application and the remaining approximately 5.9 MB to the FAT music partition. The startup clip is embedded in the application; user songs and per-song title masks live in FAT. The title image is rendered by the browser and uploaded as an A8 mask so the device does not need a CJK font. The display keeps two image objects for its marquee.
 
+The optional factory packaging path prepares the same FAM1/ETT1 files using `tools/prepare_music.py`, then `tools/package_factory.py` creates an ESP-IDF wear-levelled FAT image at the existing music partition offset and merges the complete 8 MiB image. The mount code accepts this valid volume without formatting it, even on first boot with blank NVS. Presets have no special runtime flag or embedded backup: the normal catalog, delete and upload paths handle them. Emptying the library remains persistent; only flashing the complete factory image restores its initial files. The application partition and playback buffer sizes are unchanged.
+
+Songs and their title masks use stable FAT slots (`aNNN.fam` / `tNNN.bin`). The visible playlist is sorted by occupied slot, with consecutive display indices. Deleting a song removes its optional title first and then its audio, without renaming other songs. A restart accepts gaps, including gaps left by the earlier delete algorithm. An interruption between the two removals leaves a playable song without its title mask; the existing title-sync operation restores the mask. Actual FAT corruption remains an error. Uploads reuse the first free slot, remove any orphan title in that slot, insert the new song at its sorted position, and return that exact visible index. No permanent migration or new on-disk metadata is required.
+
 Fixed labels and buttons are pre-rendered from a font supplied locally by the builder. Two small ASCII subsets provide the runtime LVGL labels. The compressed browser page embeds a compact WOFF subset of the same font and loads it automatically for page text and title rendering; characters outside that subset use a browser fallback and are reported on title sync. The source font and all generated glyph/page files are excluded from Git; builders regenerate them with `tools/prepare_local_font.ps1`. The segmented clock is drawn directly into its reusable A8 canvas.
 
 ## Transfer flow
@@ -23,6 +27,10 @@ Fixed labels and buttons are pre-rendered from a font supplied locally by the bu
 While stopped or paused, long `DOWN` enters transfer mode. `eva_wifi` starts an open AP for up to two clients and serves the compressed EVA-style page at `192.168.4.1`. The browser decodes and resamples the user's local audio, encodes FAM1/IMA ADPCM, then posts the file in chunks. The server checks length and free space, writes a temporary file, validates it, and commits it to the catalog. The page can list and delete songs and upload a title mask. The page layout follows the supplied EVA/NERV reference image, with responsive mobile layout. Long `DOWN` stops the AP and refreshes the on-device catalog. Exit is refused during an upload.
 
 The device transfer screen reuses the player panel geometry and a generated Chinese A8 title mask. Its time and track regions show the SSID and HTTP address; the bottom panel shows the exit control.
+
+Catalog responses and upload results include an opaque revision composed of a random AP-session token and a catalog generation. Add/delete operations advance the generation. Delete and title-sync requests must supply the revision associated with their displayed index; stale or missing revisions receive HTTP 409 before file mutation. Each page row retains its own revision. On conflict the browser refreshes and asks the user to select again, without retrying the mutation. This also protects the separate title request following an upload and pages left open across AP restarts.
+
+At end of track, navigation-key press/long-press events retain the two-second auto-advance deadline. Only a confirmed navigation click cancels it; the volume screen therefore does not cancel the next song.
 
 ## Key modules
 
@@ -39,4 +47,4 @@ The song format, catalog layout and browser encoder follow the public FoloToy Ga
 
 ## Verification boundary
 
-Host tests and an ESP-IDF build check logic and compilation. An earlier firmware build passed on-device startup, upload/playback, title persistence, repeated hotspot access, volume and battery display checks. The latest `1.2.0-dev` Matisse font and web layout build has only boot-log and browser-preview checks after flashing; its on-device visual and upload acceptance remain open. Flashing this table changes the old partition layout; back up data that must be preserved first.
+Host tests and an ESP-IDF build check logic and compilation. The 2026-10-01 review fixes passed model, catalog failure/restart, actual HTTP-handler (host ESP/network stubs), and browser request-flow tests. The fixed three-song factory image was flashed at `0x0` to COM14 on 2026-10-01 with data hash verification and a hardware reset. Playback, UI, multiple-phone behavior, physical power loss, and runtime heap still require acceptance on this build. Host file-operation failure injection cannot establish recovery from arbitrary FAT corruption. Earlier hardware results apply only to their dated builds. Application-only updates preserve the music partition; a complete factory image replaces songs and settings.

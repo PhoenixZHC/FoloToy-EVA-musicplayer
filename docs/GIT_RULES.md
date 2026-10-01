@@ -27,8 +27,10 @@
 | --- | --- | --- |
 | 原始音乐 | `*.mp3`, `*.wav`, `*.flac`, `*.m4a` | 可能有版权，公开仓库不能直接分发 |
 | 生成音频 | `assets/audio/*.adpcm` | 是从本地音乐生成的，仍可能包含版权内容 |
+| 预置曲库 | `assets/preset_music/`, `*.fam`、生成的歌名 `.bin` | 含本地音乐及字体衍生内容；只提交准备与打包工具 |
 | 字体及生成字形 | 自备 OTF/TTF、`main/eva_text_assets.c/.h`、`main/eva_text_buttons.c/.h`、`main/eva_font_matisse_14.c`、`main/eva_font_matisse_20.c`、`main/web_ui.h` | 均含本地字体生成的数据；用户明确要求不上传字体 |
 | 完整固件 | `release/*.bin`, `*.bin` | bin 里会内嵌音乐和 Logo |
+| 打包附属文件 | `release/*.json`, `release/*.sha256`、本地交付说明 | 随本机镜像生成，整个 `release/` 保持忽略 |
 | ESP-IDF 构建目录 | `build/`, `managed_components/` | 可重新生成，体积大 |
 | 本机配置 | `sdkconfig`, `sdkconfig.old`, `.venv/`, `.vscode/`, `.idea/` | 只适合本机，不适合别人复用 |
 | 依赖锁和缓存 | `dependencies.lock`, `__pycache__/`, `.pytest_cache/` | 可重新生成 |
@@ -57,6 +59,8 @@ git ls-files
 *.flac
 *.m4a
 assets/audio/*.adpcm
+assets/preset_music/
+*.fam
 FOT-MatissePro-EB.otf
 main/eva_text_assets.*
 main/eva_text_buttons.*

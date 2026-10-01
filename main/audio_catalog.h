@@ -23,6 +23,7 @@ typedef int esp_err_t;
 #define AUDIO_ROOT_PATH "/fs"
 
 typedef struct {
+    uint32_t file_id; /* Stable FAT slot; the visible playlist index may change. */
     uint32_t size;
     uint16_t sample_rate;
     uint32_t sample_count;
@@ -65,7 +66,7 @@ uint32_t audio_catalog_snapshot(audio_track_t *items, uint32_t capacity,
                                 uint32_t *generation, bool *healthy);
 bool audio_catalog_get(uint32_t index, audio_track_t *out);
 esp_err_t audio_catalog_start_add(uint32_t expected_size, FILE **file);
-esp_err_t audio_catalog_finish_add(void);
+esp_err_t audio_catalog_finish_add(uint32_t *index);
 esp_err_t audio_catalog_abort_add(FILE *file);
 esp_err_t audio_catalog_delete(uint32_t index);
 bool audio_catalog_read_at(uint32_t index, uint32_t expected_generation,
