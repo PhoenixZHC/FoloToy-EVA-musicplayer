@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EVA RADIO / Wi-Fi 配网</title>
+<style>
+body{background:#000;color:#f80;font:18px sans-serif;max-width:480px;margin:25px auto;padding:15px}
+h1{font-size:26px}label{display:block;margin-top:18px}
+select,input,button{box-sizing:border-box;display:block;margin:10px 0;padding:12px;width:100%;background:#191919;color:#f80;border:1px solid #f80;font:inherit}
+button:disabled,input:disabled{opacity:.5}p{line-height:1.6}#r{color:#f5a}small{color:#bbb}
+</style>
+<h1>EVA RADIO / 配网</h1>
+<p>选择附近的 2.4 GHz Wi-Fi，再输入密码。设备当前是开放热点，请在可信环境中操作。</p>
+<button id="scan" type="button">重新扫描 Wi-Fi</button>
+<p id="status" role="status" aria-live="polite"></p>
+<form id="f">
+<label for="s">Wi-Fi 网络</label>
+<select id="s" required><option value="">正在扫描…</option></select>
+<label for="p">Wi-Fi 密码</label>
+<input id="p" type="password" minlength="8" maxlength="63" autocomplete="new-password" disabled>
+<button id="save" disabled>保存 Wi-Fi</button>
+</form>
+<p id="r" role="status" aria-live="polite"></p>
+<small>保存后在设备长按 OK 打开设置，「模式」选择「网络电台」，再长按 OK 保存退出并连接。「网络设置」可重新打开配网热点。隐藏网络和仅 5 GHz 网络不会显示。</small>
+<script>
+const f=document.getElementById('f'),s=document.getElementById('s'),p=document.getElementById('p');
+const scan=document.getElementById('scan'),save=document.getElementById('save');
+const status=document.getElementById('status'),r=document.getElementById('r');
+let networks=[];
+function selection(){
+    const network=networks.find(n=>n.ssid===s.value&&n.supported);
+    save.disabled=!network;
+    p.value='';
+    p.disabled=!network||!network.secure;
+    p.required=!!network&&network.secure;
+    p.placeholder=network&&!network.secure?'开放网络，无需密码':'输入所选网络的密码';
+}
+s.onchange=selection;
+async function scanNetworks(){
+    scan.disabled=true;save.disabled=true;s.disabled=true;p.disabled=true;p.value='';r.textContent='';
+    status.textContent='正在扫描附近 Wi-Fi，请稍候…';
+    networks=[];s.textContent='';
+    try{
+        const response=await fetch('/radio/scan',{cache:'no-store'});
+        if(!response.ok)throw new Error(await response.text());
+        const data=await response.json();
+        networks=data.networks.sort((a,b)=>b.rssi-a.rssi);
+        const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='请选择 Wi-Fi';s.appendChild(placeholder);
+        for(const n of networks){
+            const option=document.createElement('option');option.value=n.ssid;
+            option.textContent=n.ssid+' · '+n.rssi+' dBm'+(!n.supported?'（加密方式不支持）':n.secure?'（需要密码）':'（开放）');
+            option.disabled=!n.supported;s.appendChild(option);
+        }
+        status.textContent=networks.length?'找到 '+networks.length+' 个 Wi-Fi'+(data.truncated?'；仅显示信号最强的 20 个接入点':''):'未找到 Wi-Fi，请靠近 2.4 GHz 路由器后重新扫描。';
+    }catch(error){status.textContent='扫描失败，请重试：'+error.message;}
+    finally{scan.disabled=false;s.disabled=false;selection();}
+}
+scan.onclick=scanNetworks;
+f.onsubmit=async event=>{
+    event.preventDefault();
+    const network=networks.find(n=>n.ssid===s.value&&n.supported);
+    if(!network){r.textContent='请先扫描并选择 Wi-Fi';return;}
+    save.disabled=true;scan.disabled=true;
+    try{
+        const response=await fetch('/radio/network',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:network.ssid,password:network.secure?p.value:''})});
+        r.textContent=response.ok?'已保存。请在设备设置中将「模式」改为「网络电台」，保存退出后连接。':'保存失败：'+await response.text();
+    }catch(error){r.textContent='保存失败，请重试：'+error.message;}
+    finally{p.value='';scan.disabled=false;save.disabled=false;}
+};
+scanNetworks();
+</script>
+</html>

@@ -4,6 +4,9 @@
 #include "../main/audio_catalog.c"
 #include "../main/eva_wifi.c"
 
+bool eva_radio_player_busy(void) { return false; }
+esp_err_t eva_radio_setup_register(httpd_handle_t server) { (void)server; return ESP_OK; }
+
 esp_err_t eva_music_store_space(uint32_t *total, uint32_t *free_bytes)
 {
     if (total) *total = 0x5f0000;

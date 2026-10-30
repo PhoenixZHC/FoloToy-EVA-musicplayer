@@ -10,6 +10,7 @@
 - `NOTICE.md`
 - `docs/*.md`
 - `components/bsp/**`
+- 电台、中文设置、共用EVA界面及独立配网页源码，main/idf_component.yml（不含下载依赖）
 - 播放器源码、`audio_catalog.*`、`fam1_format.*`、`audio_adpcm.js`、`web_ui.html`、`web_style.css`、`eva_font_matisse.h`；生成的字形与网页头文件除外
 - `main/ui_pixel*.c`、`main/ui_pixel*.h`
 - `main/main.c`
@@ -66,6 +67,9 @@ main/eva_text_assets.*
 main/eva_text_buttons.*
 main/eva_font_matisse_14.c
 main/eva_font_matisse_20.c
+main/eva_font_radio_16.c
+main/eva_font_radio_20.c
+assets/fonts/
 main/web_ui.h
 release/*.bin
 CONTEXT.md
@@ -99,3 +103,7 @@ assets/promo/*.png
 字体生成的文字图片和网页 WOFF 即使以 C 数组保存，也属于字体衍生数据，不提交。克隆仓库后使用自备字体运行 `tools/prepare_local_font.ps1` 生成；详见 `docs/ASSET_PREPARATION.md`。
 
 新增 `.png`、`.jpg`、`.jpeg`、`.webp`、`.bmp`、`.svg` 时也要检查素材来源；音乐、生成音频、字体及其生成字形、完整固件镜像不提交。
+
+## 当前电台版提交边界
+
+公开docs/EVA_RADIO.md和docs/HARDWARE_TEST_20261030.md中的功能、验收摘要；原始串口日志、音源检查报告、旧设备Flash备份、字体/生成物、启动音和固件继续留在忽略目录。CONTEXT.md只在本机同步，不强制加入Git。main/idf_component.yml记录解码依赖版本；managed_components和dependencies.lock沿用现有忽略规则。

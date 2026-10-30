@@ -13,6 +13,8 @@ static const char *TAG = "main";
 // 按键回调运行在 button 组件的任务里,操作 LVGL 必须加锁。
 static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user) {
     (void)user;
+    if (ev == BSP_BTN_CLICK || ev == BSP_BTN_LONG)
+        ESP_LOGI(TAG, "button: key=%d event=%s", btn, ev == BSP_BTN_LONG ? "long" : "click");
     if (!bsp_lvgl_lock(500)) return;
     eva_player_handle_button(btn, ev);
     bsp_lvgl_unlock();

@@ -8,7 +8,7 @@ Before pushing to a public repository:
 
 1. Confirm no protected music files are tracked.
 2. Confirm no generated `.adpcm` files are tracked unless they are redistributable.
-3. Confirm generated font assets and `web_ui.h` are excluded; README explains how builders make them locally.
+3. Confirm generated Matisse and Chinese radio font assets and `web_ui.h` are excluded; README explains how builders make them locally.
 4. Confirm no merged firmware image with protected audio is tracked.
 5. Check the source and rights for promotional art; the font and its derivatives stay local.
 6. Re-read [NOTICE.md](../NOTICE.md).
@@ -34,9 +34,20 @@ assets/preset_music/
 main/eva_text_assets.c
 main/eva_text_buttons.c
 main/eva_font_matisse_*.c
+main/eva_font_radio_16.c
+main/eva_font_radio_20.c
+assets/fonts/
 main/web_ui.h
 release/*.bin
 ```
+
+## Current Source Snapshot (2026-10-30)
+
+The current development source integrates local music, Chinese EVA settings and radio with 89 sampled MP3 streams across 19 mainland cities. The user confirmed the final layout, about one minute of continuous listening and improved loudness. Host checks: 30 Python passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. This is a source push, not a new firmware release or proof of long-term/all-station acceptance.
+
+The locally flashed app is 2020288 bytes (0x1ed3c0), with 76864 bytes free in the 2 MiB app partition and 112364 bytes of static DRAM remaining. Build and application-only flash/hash verification passed; music and NVS were preserved. Do not publish the local binary, startup clip, generated fonts, raw serial logs or device backup. See [hardware evidence](HARDWARE_TEST_20261030.md) for verified and pending items.
+
+Before pushing, run the relevant tests/build, inspect staged files and diff, and confirm the destination branch. Push without force. Source publication does not authorize erasing or reflashing a device.
 
 ## Build Release
 
@@ -51,13 +62,15 @@ The merged image layout is:
 | `0x10000` | application |
 | `0x210000` | writable music FAT partition (populated in preset-song packages) |
 
-The current local package is `release/FoloToy-EVA-player-3songs-fixed-20261001.bin` (8,388,608 bytes, flash at `0x0`). It includes three deletable preset tracks and the catalog revision, interrupted deletion, and auto-next fixes. Its SHA-256 is `2f11d027f0805997c09b483c72579e7bd39b86a7231760d71e3a93e5df470413`. The complete image has been checked against its build segments and music partition. It was written to COM14 on 2026-10-01 using ESP-IDF 5.5.4 / esptool 4.12.0: ESP32-C3 revision v1.1, 8 MB Flash, data hash verified, exit code 0, hardware reset issued. Playback, UI, multiple-phone use, real power loss, and runtime heap remain unverified for this build. Flashing the full image replaces existing songs and settings.
+### Historical October 1 Package (No Radio)
+
+The recorded local package was `release/FoloToy-EVA-player-3songs-fixed-20261001.bin` (8,388,608 bytes, flash at `0x0`). It includes three deletable preset tracks and the catalog revision, interrupted deletion, and auto-next fixes. Its SHA-256 is `2f11d027f0805997c09b483c72579e7bd39b86a7231760d71e3a93e5df470413`. The complete image has been checked against its build segments and music partition. It was written to COM14 on 2026-10-01 using ESP-IDF 5.5.4 / esptool 4.12.0: ESP32-C3 revision v1.1, 8 MB Flash, data hash verified, exit code 0, hardware reset issued. Playback, UI, multiple-phone use, real power loss, and runtime heap remain unverified for this build. Flashing the full image replaces existing songs and settings.
 
 The local `release/` directory is excluded from Git. For normal full-image flashing, use only the complete `fixed` BIN:
 
 | File suffix/name | Purpose |
 | --- | --- |
-| `FoloToy-EVA-player-3songs-fixed-20261001.bin` | Current complete firmware, including music; flash at `0x0` |
+| `FoloToy-EVA-player-3songs-fixed-20261001.bin` | Historical complete firmware, including music; flash at `0x0` |
 | `FoloToy-EVA-player-3songs-20261001.bin` | Historical package before the three fixes |
 | `.music.bin` | Music partition only; not a complete firmware image |
 | `.json`, `.sha256` | Packaging report and source-file checksum; not flash inputs |
@@ -88,5 +101,6 @@ When publishing a tested firmware version, include:
 - host test result
 - device port used for testing
 - whether startup, display, buttons, audio, auto-next, and pause/play were verified
+- radio source count/date, city navigation, network setup, settings and mode switching, long-running/cross-network audio, and maximum-volume distortion acceptance
 - whether the current font, mobile upload page, song titles, repeat AP access, and persistence were verified on the flashed build
 - whether the binary includes non-redistributable local assets

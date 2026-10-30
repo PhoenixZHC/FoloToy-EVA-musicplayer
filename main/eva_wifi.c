@@ -1,4 +1,5 @@
 #include "eva_wifi.h"
+#include "eva_radio_player.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -262,6 +263,7 @@ static esp_err_t delete_post(httpd_req_t *req)
 
 esp_err_t eva_wifi_start(void)
 {
+    if (eva_radio_player_busy()) return ESP_ERR_INVALID_STATE;
     if (s_server) return ESP_OK;
     ESP_LOGI(TAG, "heap before Wi-Fi: %lu", (unsigned long)esp_get_free_heap_size());
     if (!s_netif_ready) {
@@ -291,7 +293,7 @@ esp_err_t eva_wifi_start(void)
     err = esp_wifi_start();
     if (err != ESP_OK) goto fail;
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
-    http.max_uri_handlers = 5;
+    http.max_uri_handlers = 8;
     http.max_open_sockets = 4;
     http.recv_wait_timeout = 2;
     http.send_wait_timeout = 10;
@@ -312,6 +314,8 @@ esp_err_t eva_wifi_start(void)
         err = httpd_register_uri_handler(s_server, &routes[i]);
         if (err != ESP_OK) goto fail;
     }
+    err = eva_radio_setup_register(s_server);
+    if (err != ESP_OK) goto fail;
     ESP_LOGI(TAG, "open hotspot ready: %s http://192.168.4.1/ heap=%lu",
              s_ssid, (unsigned long)esp_get_free_heap_size());
     return ESP_OK;

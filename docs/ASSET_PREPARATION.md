@@ -10,7 +10,7 @@ The firmware embeds one local EVA1/IMA ADPCM startup clip. Generate it from a le
 .\tools\prepare_startup_audio.ps1 -InputFile 'C:\path\to\startup.mp3'
 ```
 
-The script needs Python 3.13 and FFmpeg (or `imageio_ffmpeg` installed for Python 3.13). It creates `assets/audio/startup.adpcm` at 8 kHz, mono. This file is ignored by Git. The provided local MP3 is only an input for this checkout; it is not part of the source release.
+The Windows script needs Python 3.13 and FFmpeg (or `imageio_ffmpeg` installed for Python 3.13). It creates `assets/audio/startup.adpcm` at 8 kHz, mono. This file is ignored by Git. The provided local MP3 is only an input for this checkout; it is not part of the source release.
 
 ## User songs
 
@@ -52,12 +52,30 @@ Bring an OTF or TTF font you are permitted to use locally. It needs the Chinese 
 ```powershell
 py -m venv .venv
 & '.\.venv\Scripts\python.exe' -m pip install pillow fonttools
-.\tools\prepare_local_font.ps1 -FontFile 'C:\path\to\your-font.otf'
+.\tools\prepare_local_font.ps1 -FontFile 'C:\path\to\your-font.otf' -CjkFontFile 'C:\path\to\NotoSansSC.ttf'
 ```
 
 The script generates fixed UI masks, 14 px and 20 px ASCII LVGL font subsets, and the compressed upload page. It uses `lv_font_conv@1.5.3` through `npx`. The internal C symbol names still contain `matisse` for compatibility, but the actual shapes come from the font you supplied. The generated files are `main/eva_text_assets.c/.h`, `main/eva_text_buttons.c/.h`, `main/eva_font_matisse_14.c`, `main/eva_font_matisse_20.c`, and `main/web_ui.h`. All are excluded from Git. The page header contains a WOFF subset, CSS, JavaScript encoder, and NERV logo. Run the script again after changing `main/web_ui.html`, `main/web_style.css`, or `main/audio_adpcm.js`. Previously uploaded titles require “同步歌名” to be rendered again.
 
 The generated font files stay local even when the chosen font permits redistribution. A fresh checkout needs to regenerate them before `idf.py build`; CMake reports a missing local asset if they are absent. `main/eva_logo_assets.c` is a separate image source.
+
+## Chinese radio and settings fonts
+
+Radio, city/station selection and settings use separate 16/20 px Chinese subsets. The supplied Matisse font lacks some Simplified Chinese characters, so these screens use a builder-supplied CJK font, for example Noto Sans SC (SIL Open Font License 1.1). Existing EVA masks and the local player retain their original font. The generator checks every required character and fails visibly on missing glyphs; it does not silently substitute another font.
+
+On Linux, with Node.js/npm on PATH:
+
+    .venv/bin/python tools/prepare_radio_fonts.py --font /path/to/NotoSansSC.ttf
+
+For a Noto CJK collection, select the Simplified Chinese face explicitly, for example --font /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc --font-index 2. On Windows, pass -CjkFontFile and optionally -CjkFontIndex to tools/prepare_local_font.ps1 alongside -FontFile. EVA_CJK_FONT_PATH is also accepted. Regenerate after changing radio/settings text or the city catalog.
+
+The current city catalog requires 211 non-ASCII characters; the generator derives this set from source rather than relying on a fixed count. Run tests/test_radio_fonts.py after generation to check coverage and the 240px layout. Changes to the catalog require new subsets even when the original player font is unchanged.
+
+The generated main/eva_font_radio_16.c, main/eva_font_radio_20.c and extracted assets/fonts/radio-source.otf remain Git-ignored. The original font license still applies to any separately distributed binary; no font files are added to this repository.
+
+## Linux workstation note
+
+The validated Linux environment uses Python 3.12.15 in .venv and a separate ESP-IDF 5.5.4 Python environment; Windows PowerShell wrappers above retain their stated Python requirements. After local assets are prepared, .venv/bin/python tools/idf_linux.py build size runs the installed toolchain. The wrapper checks configured paths but does not install dependencies or create substitute assets. The current app has only 76864 bytes free in its 2 MiB partition; regenerate and recheck Flash/internal RAM after changing fonts or the startup clip.
 
 ## Firmware images
 

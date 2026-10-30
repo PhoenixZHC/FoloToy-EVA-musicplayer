@@ -57,6 +57,8 @@ main/eva_text_buttons.c
 main/eva_text_buttons.h
 main/eva_font_matisse_14.c
 main/eva_font_matisse_20.c
+main/eva_font_radio_16.c
+main/eva_font_radio_20.c
 main/web_ui.h
 
 # Firmware images can embed protected audio/logo assets.

@@ -12,7 +12,7 @@ This project targets a small ESP32-C3 device with 8 MB Flash and no PSRAM. Keep 
 ## Code Rules
 
 - Keep board-level reusable logic in `components/bsp`.
-- Keep player-specific UI, state, playback, Wi-Fi upload, and catalog behavior in `main`.
+- Keep player-specific UI, state, playback, internet radio, Chinese settings, Wi-Fi setup/upload, and catalog behavior in `main`.
 - Keep pure state logic testable without ESP-IDF or LVGL when practical.
 - Do not block inside button callbacks or LVGL timer callbacks.
 - Hold the LVGL lock when non-LVGL tasks touch LVGL objects.
@@ -44,12 +44,21 @@ $env:PYTHONPATH = "tools"
 py -m pytest tests
 node tests/test_audio_adpcm.js
 node tests/test_web_catalog.js
+node tests/test_radio_setup.js
 idf.py build
 ```
 
 For UI, button, audio, display, partition, or memory changes, also test on real hardware and record what was observed. Build results and an older hardware check do not establish that the newest font and upload-page revision has passed on-device acceptance.
 
 Run the relevant C tests as well. `test_audio_catalog.c` covers normal, failure, and gap modes; `test_preset_catalog.c` exercises deletion and restart with prepared presets. Both modify their input directories: supply disposable copies under an ignored `build_test_*` directory, never the original preset assets. The Python HTTP test creates its own isolated copy and ESP/network stubs; these stubs are not firmware inputs. A successful full-image flash and data checksum are separate evidence from boot, playback, and power-loss acceptance.
+
+## Radio and Settings Checks
+
+Radio catalogs retain stable station IDs used by NVS. Keep each city/station list within 32 entries. New streams require actual HTTP/audio/MP3 sampling with tools/check_radio_sources.py; a rewritten HLS URL alone is not verification. Record source/date and sampling failures. Regenerate the local 16/20 px CJK subsets after changing labels or station names, then run tests/test_radio_fonts.py.
+
+Radio setup/settings C harnesses run through pytest with isolated stubs; standalone catalog/model/stream C tests must also be compiled and executed, alongside the existing local-player C programs. On Linux, put the project .venv/bin on PATH so test subprocesses can find Node.js. The installed local IDF wrapper is .venv/bin/python tools/idf_linux.py build size; it does not install tools or prepare assets.
+
+The October 30 baseline is 30 Python tests passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. Tests depending on private media may skip; report them accurately. Current short listening and loudness acceptance do not imply all stations or long-running/cross-network playback have passed.
 
 ## Pull Request Notes
 

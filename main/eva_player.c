@@ -1,10 +1,17 @@
 #include "eva_player.h"
+#include "eva_player_frame.h"
 #include "eva_player_model.h"
+#include "eva_settings.h"
+#include "eva_settings_store.h"
 #include "eva_adpcm.h"
 #include "fam1_format.h"
 #include "audio_catalog.h"
 #include "eva_music_store.h"
 #include "eva_wifi.h"
+#include "eva_radio_player.h"
+#include "eva_radio_catalog.h"
+#include "eva_radio_config.h"
+#include "eva_radio_view.h"
 #include "eva_title.h"
 #include "eva_clock.h"
 #include "eva_track_layout.h"
@@ -24,6 +31,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #define COLOR_BG 0x000000
 #define COLOR_ORANGE 0xFF8800
@@ -62,7 +70,7 @@ static size_t s_displayed_track = SIZE_MAX;
 static int s_track_image_width;
 static eva_player_model_t s_model;
 static bool s_ready;
-static TaskHandle_t s_audio_task;
+static TaskHandle_t volatile s_audio_task;
 static volatile bool s_audio_playing;
 static volatile bool s_audio_suspend;
 static volatile bool s_audio_suspended;
@@ -81,6 +89,27 @@ static int s_battery_bars = -1;
 static uint32_t s_battery_next_poll;
 static bool s_upload_mode;
 static volatile uint8_t s_volume_percent = 70;
+static bool s_radio_mode;
+static size_t s_radio_station;
+static lv_obj_t *s_radio_scr, *s_radio_title, *s_radio_status;
+static eva_radio_view_t s_radio_view;
+static eva_radio_list_view_t s_radio_list;
+static unsigned s_radio_list_stage;
+static size_t s_radio_list_city, s_radio_list_selected;
+static bool s_radio_exit, s_radio_start_pending, s_radio_local_released;
+static size_t s_radio_city;
+static uint16_t s_radio_saved_station;
+static esp_err_t s_radio_start_error;
+static eva_settings_t s_settings, s_saved_settings;
+static lv_obj_t *s_settings_scr, *s_settings_rows[EVA_SETTING_COUNT];
+static lv_obj_t *s_settings_labels[EVA_SETTING_COUNT], *s_settings_hint;
+static eva_setting_item_t s_settings_item;
+static bool s_settings_edit, s_settings_help, s_screen_off, s_wake_key;
+static lv_obj_t *s_settings_help_panel;
+static uint32_t s_last_activity;
+typedef enum { SOURCE_REQUEST_NONE, SOURCE_REQUEST_LOCAL, SOURCE_REQUEST_RADIO,
+               SOURCE_REQUEST_NETWORK } source_request_t;
+static source_request_t s_source_request;
 
 LV_DRAW_BUF_DEFINE_STATIC(s_clock_draw_buf, 224, 82, LV_COLOR_FORMAT_A8);
 
@@ -90,6 +119,10 @@ extern const uint8_t s_startup_adpcm_end[] asm("_binary_startup_adpcm_end");
 static void audio_task(void *arg);
 static void boot_audio_task(void *arg);
 static void sync_standby_screen(void);
+static void radio_tick(void);
+static void enter_radio_mode(void);
+static void process_source_request(void);
+static void screen_idle_tick(uint32_t now);
 
 typedef struct {
     uint32_t track;
@@ -105,16 +138,7 @@ static bool fam_reader_read(void *opaque, uint32_t offset, void *out, size_t len
 static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int w, int h,
                        uint32_t bg, uint32_t border)
 {
-    lv_obj_t *obj = lv_obj_create(parent);
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(obj, x, y);
-    lv_obj_set_size(obj, w, h);
-    lv_obj_set_style_radius(obj, 0, 0);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_set_style_bg_color(obj, lv_color_hex(bg), 0);
-    lv_obj_set_style_border_color(obj, lv_color_hex(border), 0);
-    lv_obj_set_style_border_width(obj, 1, 0);
-    return obj;
+    return eva_player_frame_panel(parent, x, y, w, h, bg, border);
 }
 
 static void track_scroll_cb(void *obj, int32_t offset)
@@ -218,6 +242,7 @@ static void update_battery_indicator(uint32_t now)
     s_battery_next_poll = now + BATTERY_POLL_MS;
     int soc = s_battery_ready ? bsp_battery_soc() : -1;
     int bars = soc < 0 ? 0 : battery_bar_count(soc);
+    if (s_radio_mode) eva_radio_view_battery(&s_radio_view, bars);
     if (bars == s_battery_bars) return;
     static const lv_image_dsc_t *const images[] = {
         &eva_text_internal_battery_0,
@@ -232,6 +257,7 @@ static void update_battery_indicator(uint32_t now)
 
 static bool sync_audio_snapshot(void)
 {
+    if (s_radio_mode || s_audio_suspend) return false;
     bool state_changed = false;
     if (s_audio_failed) {
         s_audio_failed = false;
@@ -242,7 +268,11 @@ static bool sync_audio_snapshot(void)
     s_audio_playing = eva_player_is_playing(&s_model);
     s_audio_track = eva_player_track_index(&s_model);
     if (s_audio_playing && !s_audio_task) {
-        BaseType_t ok = xTaskCreate(audio_task, "eva_audio", 4096, NULL, 4, &s_audio_task);
+        TaskHandle_t task = NULL;
+        vTaskSuspendAll();
+        BaseType_t ok = xTaskCreate(audio_task, "eva_audio", 4096, NULL, 4, &task);
+        s_audio_task = task;
+        xTaskResumeAll();
         if (ok != pdPASS) {
             ESP_LOGE(TAG, "audio task create failed");
             s_audio_task = NULL;
@@ -271,6 +301,10 @@ static bool consume_audio_track_finished(uint32_t now)
 
 static void update_ui(void)
 {
+    if (s_radio_mode) {
+        eva_radio_player_volume(s_volume_percent);
+        return;
+    }
     sync_audio_snapshot();
     update_battery_indicator(lv_tick_get());
     draw_time();
@@ -283,7 +317,23 @@ static void ui_tick(lv_timer_t *timer)
     (void)timer;
     uint32_t now = lv_tick_get();
     uint32_t delta = now - s_last_tick;
+    static uint32_t last_memory_report;
+    if ((uint32_t)(now - last_memory_report) >= 30000) {
+        lv_mem_monitor_t memory;
+        lv_mem_monitor(&memory);
+        ESP_LOGI(TAG, "UI memory: used=%u peak=%u largest=%u",
+            (unsigned)(memory.total_size - memory.free_size),
+            (unsigned)memory.max_used, (unsigned)memory.free_biggest_size);
+        last_memory_report = now;
+    }
     s_last_tick = now;
+    screen_idle_tick(now);
+    if (!s_settings_scr) process_source_request();
+    if (s_radio_mode) {
+        radio_tick();
+        update_battery_indicator(now);
+        return;
+    }
     bool state_changed = consume_audio_track_finished(now);
     if (eva_player_auto_advance_due(&s_model, now)) {
         eva_player_advance_after_finish(&s_model);
@@ -340,27 +390,7 @@ static void build_player_screen(void)
     lv_obj_set_style_border_width(s_scr, 0, 0);
     lv_obj_set_style_pad_all(s_scr, 0, 0);
 
-    lv_obj_t *title_panel = panel(s_scr, 4, 14, 132, 34, COLOR_GREEN, COLOR_ORANGE);
-    lv_obj_t *title_img = lv_image_create(title_panel);
-    lv_image_set_src(title_img, &eva_text_evangelion);
-    lv_obj_set_style_image_recolor(title_img, lv_color_hex(COLOR_ORANGE), 0);
-    lv_obj_set_style_image_recolor_opa(title_img, LV_OPA_COVER, 0);
-    lv_obj_center(title_img);
-    lv_obj_t *internal_panel = panel(s_scr, 142, 12, 94, 44, COLOR_BG, COLOR_ORANGE);
-    s_battery_image = lv_image_create(internal_panel);
-    lv_image_set_src(s_battery_image, &eva_text_internal_battery_0);
-    lv_obj_center(s_battery_image);
-
-    lv_obj_t *system_panel = panel(s_scr, 142, 63, 94, 30, COLOR_BG, COLOR_ORANGE);
-    lv_obj_t *system_img = lv_image_create(system_panel);
-    lv_image_set_src(system_img, &eva_text_system_jp);
-    lv_obj_center(system_img);
-
-    lv_obj_t *status = lv_image_create(s_scr);
-    lv_image_set_src(status, &eva_text_status);
-    lv_obj_set_style_image_recolor(status, lv_color_hex(COLOR_ORANGE), 0);
-    lv_obj_set_style_image_recolor_opa(status, LV_OPA_COVER, 0);
-    lv_obj_set_pos(status, 9, 57);
+    s_battery_image = eva_player_frame_header(s_scr, NULL, NULL);
 
     LV_DRAW_BUF_INIT_STATIC(s_clock_draw_buf);
     s_clock = lv_canvas_create(s_scr);
@@ -407,12 +437,21 @@ static void show_standby_screen(void)
     if (s_standby_scr) return;
 
     s_standby_scr = create_nerv_logo_screen();
+    lv_obj_t *hint = lv_label_create(s_standby_scr);
+    lv_label_set_text(hint, "STANDBY\nCLICK OK BACK / HOLD OK SETTINGS");
+    lv_obj_set_style_text_font(hint, &eva_font_matisse_14, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(COLOR_ORANGE), 0);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(hint, 224);
+    lv_obj_set_pos(hint, 8, 270);
+    ESP_LOGI(TAG, "standby entered: click OK back, hold OK settings");
     lv_screen_load(s_standby_scr);
 }
 
 static void hide_standby_screen(void)
 {
     if (!s_standby_scr) return;
+    ESP_LOGI(TAG, "standby exit");
 
     lv_obj_t *standby = s_standby_scr;
     s_standby_scr = NULL;
@@ -464,22 +503,6 @@ static void mode_header(lv_obj_t *screen, const lv_image_dsc_t *badge,
     panel(screen, 3, 313, 234, 2, COLOR_GREEN, COLOR_GREEN);
 }
 
-static void mode_instruction(lv_obj_t *screen, const lv_image_dsc_t *instruction,
-                             const char *exit_text)
-{
-    panel(screen, 3, 258, 234, 45, COLOR_GREEN, COLOR_ORANGE);
-    if (instruction) {
-        lv_obj_t *image = lv_image_create(screen);
-        lv_image_set_src(image, instruction);
-        lv_obj_set_style_image_recolor(image, lv_color_hex(COLOR_ORANGE), 0);
-        lv_obj_set_style_image_recolor_opa(image, LV_OPA_COVER, 0);
-        lv_obj_set_pos(image, 10, 260);
-    }
-    lv_obj_t *exit_label = upload_label(screen, exit_text, instruction ? 286 : 271,
-                                       &eva_font_matisse_14, COLOR_ORANGE);
-    lv_obj_set_style_text_align(exit_label, LV_TEXT_ALIGN_CENTER, 0);
-}
-
 static void draw_volume(void)
 {
     if (!s_volume_value) return;
@@ -499,8 +522,8 @@ static void enter_volume_mode(void)
                 "AUDIO");
 
     lv_obj_t *level_panel = panel(s_volume_scr, 8, 106, 224, 82, COLOR_BG, COLOR_ORANGE);
-    lv_obj_t *heading = upload_label(level_panel, "MASTER VOLUME", 8,
-                                     &eva_font_matisse_14, COLOR_ORANGE);
+    lv_obj_t *heading = upload_label(level_panel, "播放音量", 8,
+                                     &eva_font_radio_16, COLOR_ORANGE);
     lv_obj_set_width(heading, 210);
     s_volume_value = lv_label_create(level_panel);
     lv_obj_set_style_text_color(s_volume_value, lv_color_hex(COLOR_ORANGE), 0);
@@ -508,7 +531,7 @@ static void enter_volume_mode(void)
 
     lv_obj_t *bar = panel(s_volume_scr, 4, 206, 232, 46, COLOR_BG, COLOR_ORANGE);
     s_volume_fill = panel(bar, 12, 15, 0, 14, COLOR_ORANGE, COLOR_ORANGE);
-    mode_instruction(s_volume_scr, &eva_text_volume_instruction, "OK / RETURN");
+    upload_label(s_volume_scr, "上下调整音量 / 短按确认返回", 274, &eva_font_radio_16, COLOR_ORANGE);
     draw_volume();
     lv_screen_load(s_volume_scr);
 }
@@ -523,11 +546,204 @@ static void exit_volume_mode(void)
     s_volume_scr = NULL;
     s_volume_value = NULL;
     s_volume_fill = NULL;
-    lv_screen_load(s_scr);
+    lv_screen_load(s_radio_mode ? s_radio_scr : s_scr);
     lv_obj_delete(screen);
     s_model.active_control = eva_player_is_playing(&s_model) ?
                              EVA_PLAYER_CONTROL_PLAY : EVA_PLAYER_CONTROL_PAUSE;
     update_ui();
+}
+
+static void radio_selection_draw(void)
+{
+    const eva_radio_station_t *station;
+    const eva_radio_city_t *city;
+    if (!eva_radio_city_at(s_radio_city, &city) ||
+        !eva_radio_station_at(s_radio_station, &station)) return;
+    size_t count = eva_radio_stations_for_city(city->id), index = 0;
+    for (size_t i = 0; i < count; i++) {
+        const eva_radio_station_t *candidate;
+        eva_radio_station_for_city_at(city->id, i, &candidate);
+        if (candidate->id == station->id) index = i;
+    }
+    eva_radio_view_selection(&s_radio_view, city->name, station->name, station->category, index, count);
+}
+
+static void radio_list_draw(void)
+{
+    const char *names[32];
+    size_t count = eva_radio_city_count();
+    const eva_radio_city_t *city;
+    char heading[64] = "选择城市";
+    if (s_radio_list_stage == 2) {
+        eva_radio_city_at(s_radio_list_city, &city);
+        count = eva_radio_stations_for_city(city->id);
+        snprintf(heading, sizeof(heading), "%s电台", city->name);
+    }
+    if (!count || count > 32) { ESP_LOGE(TAG, "invalid radio list size: %u", (unsigned)count); return; }
+    for (size_t i = 0; i < count; i++) {
+        if (s_radio_list_stage == 1) {
+            eva_radio_city_at(i, &city);
+            names[i] = city->name;
+        } else {
+            const eva_radio_station_t *station;
+            eva_radio_station_for_city_at(city->id, i, &station);
+            names[i] = station->name;
+        }
+    }
+    eva_radio_list_draw(&s_radio_list, heading, names, count, s_radio_list_selected);
+}
+
+static void close_radio_list(void)
+{
+    lv_obj_t *screen = s_radio_list.screen;
+    s_radio_list.screen = NULL;
+    s_radio_list_stage = 0;
+    lv_screen_load(s_radio_scr);
+    lv_obj_delete(screen);
+}
+
+static void open_radio_list(void)
+{
+    s_radio_list_stage = 1;
+    s_radio_list_selected = s_radio_city;
+    s_radio_list_city = s_radio_city;
+    eva_radio_list_create(&s_radio_list, s_battery_bars);
+    radio_list_draw();
+    lv_screen_load(s_radio_list.screen);
+}
+
+static void radio_list_button(bsp_btn_t btn, bsp_btn_ev_t ev)
+{
+    if (btn == BSP_BTN_DOWN && ev == BSP_BTN_LONG) {
+        if (s_radio_list_stage == 2) {
+            s_radio_list_stage = 1;
+            s_radio_list_selected = s_radio_list_city;
+            radio_list_draw();
+        } else close_radio_list();
+        return;
+    }
+    if (ev != BSP_BTN_CLICK) return;
+    const eva_radio_city_t *city;
+    eva_radio_city_at(s_radio_list_city, &city);
+    size_t count = s_radio_list_stage == 1 ? eva_radio_city_count() : eva_radio_stations_for_city(city->id);
+    if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
+        int direction = btn == BSP_BTN_UP ? -1 : 1;
+        s_radio_list_selected = (s_radio_list_selected + count + direction) % count;
+    } else if (btn == BSP_BTN_OK) {
+        if (s_radio_list_stage == 1) {
+            s_radio_list_city = s_radio_list_selected;
+            s_radio_list_stage = 2;
+            s_radio_list_selected = 0;
+        } else {
+            const eva_radio_station_t *station;
+            eva_radio_station_for_city_at(city->id, s_radio_list_selected, &station);
+            s_radio_city = s_radio_list_city;
+            for (size_t i = 0; i < eva_radio_station_count(); i++) {
+                const eva_radio_station_t *candidate;
+                eva_radio_station_at(i, &candidate);
+                if (candidate->id == station->id) s_radio_station = i;
+            }
+            s_radio_start_pending = true;
+            eva_radio_player_stop();
+            radio_selection_draw();
+            close_radio_list();
+            return;
+        }
+    }
+    radio_list_draw();
+}
+
+static void radio_tick(void)
+{
+    if (!s_radio_local_released && !s_audio_task) {
+        s_radio_local_released = true;
+        s_audio_failed = false;
+        s_audio_track_finished = false;
+    }
+    if (s_radio_exit && s_radio_local_released && !eva_radio_player_busy()) {
+        lv_obj_t *screen = s_radio_scr;
+        s_radio_mode = false;
+        s_radio_exit = false;
+        s_radio_scr = s_radio_title = s_radio_status = NULL;
+        s_audio_suspend = false;
+        s_audio_reset = true;
+        s_last_tick = lv_tick_get();
+        lv_screen_load(s_scr);
+        lv_obj_delete(screen);
+        update_ui();
+        return;
+    }
+    if (s_radio_start_pending && !s_radio_exit && s_radio_local_released &&
+        !eva_radio_player_busy()) {
+        s_radio_start_pending = false;
+        esp_err_t err = eva_radio_player_start(s_radio_station, s_volume_percent);
+        s_radio_start_error = err;
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "radio start failed: %s", esp_err_to_name(err));
+            lv_label_set_text(s_radio_status, "启动失败，请检查网络");
+            return;
+        }
+        const eva_radio_station_t *station;
+        if (eva_radio_station_at(s_radio_station, &station) && station->id != s_radio_saved_station) {
+            err = eva_radio_station_save(station->id);
+            if (err == ESP_OK) s_radio_saved_station = station->id;
+            else ESP_LOGW(TAG, "station save failed: %s", esp_err_to_name(err));
+        }
+    }
+    eva_radio_player_volume(s_volume_percent);
+    eva_radio_view_playing(&s_radio_view, eva_radio_player_busy());
+    static const char *const status[] = {
+        "已暂停", "正在连接电台", "正在缓冲", "正在直播",
+        "信号中断，正在重连", "播放失败",
+    };
+    if (s_radio_exit) lv_label_set_text(s_radio_status, "正在停止，请稍候");
+    else if (!s_radio_local_released) lv_label_set_text(s_radio_status, "正在切换音频");
+    else if (s_radio_start_error != ESP_OK)
+        lv_label_set_text(s_radio_status, s_radio_start_error == ESP_ERR_NVS_NOT_FOUND ?
+            "网络未设置" : "启动失败，请检查网络");
+    else lv_label_set_text(s_radio_status, status[eva_radio_player_status()]);
+}
+
+static void enter_radio_mode(void)
+{
+    ESP_LOGI(TAG, "radio mode requested");
+    /* 本地任务自己退出并释放 I2S 后，UI tick 才能启动网络音频。 */
+    eva_player_stop(&s_model);
+    hide_standby_screen();
+    s_audio_suspend = true;
+    s_audio_playing = false;
+    s_radio_mode = true;
+    s_radio_exit = false;
+    s_radio_start_pending = true;
+    s_radio_local_released = false;
+    s_radio_start_error = ESP_OK;
+    s_radio_station = 0;
+    uint16_t saved = 0;
+    esp_err_t err = eva_radio_station_load(&saved);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND)
+        ESP_LOGW(TAG, "station load failed: %s", esp_err_to_name(err));
+    const eva_radio_station_t *station;
+    for (size_t i = 0; i < eva_radio_station_count(); i++) {
+        if (eva_radio_station_at(i, &station) && station->id == saved) s_radio_station = i;
+    }
+    eva_radio_station_at(s_radio_station, &station);
+    s_radio_saved_station = saved;
+    s_radio_city = 0;
+    const eva_radio_city_t *city;
+    for (size_t i = 0; i < eva_radio_city_count(); i++)
+        if (eva_radio_city_at(i, &city) && city->id == station->city_id) s_radio_city = i;
+    eva_radio_view_create(&s_radio_view);
+    eva_radio_view_battery(&s_radio_view, s_battery_bars);
+    s_radio_scr = s_radio_view.screen;
+    s_radio_title = s_radio_view.station;
+    s_radio_status = s_radio_view.status;
+    radio_selection_draw();
+    lv_screen_load(s_radio_scr);
+    lv_mem_monitor_t memory;
+    lv_mem_monitor(&memory);
+    ESP_LOGI(TAG, "LVGL memory: total=%u used=%u peak=%u largest=%u",
+        (unsigned)memory.total_size, (unsigned)(memory.total_size - memory.free_size),
+        (unsigned)memory.max_used, (unsigned)memory.free_biggest_size);
 }
 
 static void enter_upload_mode(void)
@@ -547,8 +763,8 @@ static void enter_upload_mode(void)
     lv_obj_set_style_bg_color(s_upload_scr, lv_color_hex(COLOR_BG), 0);
     lv_obj_set_style_border_width(s_upload_scr, 0, 0);
     lv_obj_set_style_pad_all(s_upload_scr, 0, 0);
-    mode_header(s_upload_scr, &eva_text_wifi_badge, &eva_text_wifi_status,
-                "TRANSFER");
+    upload_label(s_upload_scr, "网络设置与音乐管理", 12, &eva_font_radio_20, COLOR_ORANGE);
+    upload_label(s_upload_scr, "手机连接下方热点\n浏览器打开下方地址", 52, &eva_font_radio_16, COLOR_GREEN);
     lv_obj_t *network_panel = panel(s_upload_scr, 8, 106, 224, 82,
                                     COLOR_BG, COLOR_ORANGE);
     lv_obj_t *address_panel = panel(s_upload_scr, 4, 206, 232, 46,
@@ -564,10 +780,10 @@ static void enter_upload_mode(void)
         lv_obj_set_style_text_align(address, LV_TEXT_ALIGN_CENTER, 0);
     } else {
         ESP_LOGE(TAG, "Wi-Fi start failed: %s", esp_err_to_name(err));
-        s_upload_status = upload_label(network_panel, "WIFI START FAILED", 27,
-                                       &eva_font_matisse_14, COLOR_MAGENTA);
+        s_upload_status = upload_label(network_panel, "热点启动失败", 27,
+                                       &eva_font_radio_16, COLOR_MAGENTA);
     }
-    mode_instruction(s_upload_scr, NULL, "HOLD DOWN / EXIT");
+    upload_label(s_upload_scr, "网页内选择网络电台配网\n长按下键退出 / 长按OK设置", 274, &eva_font_radio_16, COLOR_ORANGE);
     s_upload_mode = true;
     lv_screen_load(s_upload_scr);
 }
@@ -575,10 +791,13 @@ static void enter_upload_mode(void)
 static void exit_upload_mode(void)
 {
     if (eva_wifi_stop() != ESP_OK) {
-        lv_label_set_text(s_upload_status, "UPLOAD IN PROGRESS");
+        lv_obj_set_style_text_font(s_upload_status, &eva_font_radio_16, 0);
+        lv_label_set_text(s_upload_status, "正在上传，请稍候");
         return;
     }
     s_upload_mode = false;
+    ESP_LOGI(TAG, "upload mode stopped; restoring player");
+    if (s_settings.mode == EVA_SOURCE_RADIO) s_source_request = SOURCE_REQUEST_RADIO;
     s_audio_reset = true;
     s_audio_suspend = false;
     eva_player_set_track_count(&s_model, audio_catalog_count());
@@ -591,6 +810,167 @@ static void exit_upload_mode(void)
     lv_screen_load(s_scr);
     lv_obj_delete(screen);
     update_ui();
+}
+
+static void screen_idle_tick(uint32_t now)
+{
+    if (!s_screen_off && eva_settings_screen_due(&s_settings, s_last_activity, now)) {
+        bsp_display_backlight(0);
+        s_screen_off = true;
+        ESP_LOGI(TAG, "screen off; audio continues");
+    }
+}
+
+static void process_source_request(void)
+{
+    source_request_t request = s_source_request;
+    if (request == SOURCE_REQUEST_NONE) return;
+    if (s_radio_mode) {
+        if (request == SOURCE_REQUEST_RADIO && !s_radio_exit) {
+            s_source_request = SOURCE_REQUEST_NONE;
+            return;
+        }
+        s_radio_exit = true;
+        s_radio_start_pending = false;
+        eva_radio_player_stop();
+        return;
+    }
+    if (request == SOURCE_REQUEST_NETWORK) {
+        if (!s_upload_mode) {
+            eva_player_stop(&s_model);
+            enter_upload_mode();
+        }
+        s_source_request = SOURCE_REQUEST_NONE;
+        return;
+    }
+    if (s_upload_mode) {
+        exit_upload_mode();
+        if (s_upload_mode) return; /* 正在上传时继续显示明确的等待状态。 */
+    }
+    s_source_request = SOURCE_REQUEST_NONE;
+    if (request == SOURCE_REQUEST_RADIO) enter_radio_mode();
+}
+
+static void settings_draw(void)
+{
+    lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_MODE], "模式    %s",
+        s_settings.mode == EVA_SOURCE_RADIO ? "网络电台" : "本地播放器");
+    lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_BRIGHTNESS], "亮度    %u%%", s_settings.brightness);
+    if (s_settings.screen_off_seconds)
+        lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_SCREEN_OFF], "自动熄屏    %u 秒", s_settings.screen_off_seconds);
+    else lv_label_set_text(s_settings_labels[EVA_SETTING_SCREEN_OFF], "自动熄屏    常亮");
+    lv_label_set_text(s_settings_labels[EVA_SETTING_NETWORK], "网络设置    Wi-Fi配网");
+    lv_label_set_text(s_settings_labels[EVA_SETTING_HELP], "操作说明");
+    lv_label_set_text(s_settings_labels[EVA_SETTING_BACK], "保存并返回");
+    for (int i = 0; i < EVA_SETTING_COUNT; i++) {
+        bool selected = i == s_settings_item;
+        lv_obj_set_style_text_color(s_settings_labels[i], lv_color_hex(COLOR_ORANGE), 0);
+        lv_obj_set_style_bg_color(s_settings_rows[i], lv_color_hex(selected ? COLOR_GREEN : COLOR_BG), 0);
+        lv_obj_set_style_border_color(s_settings_rows[i],
+            lv_color_hex(selected && s_settings_edit ? COLOR_MAGENTA : COLOR_ORANGE), 0);
+    }
+    for (int i = 0; i < EVA_SETTING_COUNT; i++) {
+        if (s_settings_help) lv_obj_add_flag(s_settings_rows[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_remove_flag(s_settings_rows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_settings_help) lv_obj_remove_flag(s_settings_help_panel, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_settings_help_panel, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_settings_hint, s_settings_help ? "短按OK 返回设置" :
+        s_settings_edit ? "上下调整 / OK确认" : "上下选择 / OK编辑");
+
+}
+
+static void enter_settings_mode(void)
+{
+    if (s_settings_scr || (s_radio_mode && s_radio_exit)) return;
+    if (s_standby_scr) {
+        eva_player_stop(&s_model);
+        hide_standby_screen();
+    }
+    s_settings_item = EVA_SETTING_MODE;
+    s_settings_edit = false;
+    s_settings_scr = lv_obj_create(NULL);
+    lv_obj_remove_flag(s_settings_scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(s_settings_scr, lv_color_hex(COLOR_BG), 0);
+    lv_obj_set_style_pad_all(s_settings_scr, 0, 0);
+    lv_obj_set_style_border_width(s_settings_scr, 0, 0);
+    lv_obj_t *battery = eva_player_frame_header(s_settings_scr, "系统设置", &eva_font_radio_16);
+    eva_player_frame_battery(battery, s_battery_bars);
+    upload_label(s_settings_scr, "参数调整", 60, &eva_font_radio_20, COLOR_ORANGE);
+    s_settings_help = false;
+    for (int i = 0; i < EVA_SETTING_COUNT; i++) {
+        s_settings_rows[i] = panel(s_settings_scr, 8, 103 + i * 32, 224, 30, COLOR_BG, COLOR_ORANGE);
+        s_settings_labels[i] = lv_label_create(s_settings_rows[i]);
+        lv_obj_set_style_text_font(s_settings_labels[i], &eva_font_radio_16, 0);
+        lv_obj_set_style_text_color(s_settings_labels[i], lv_color_hex(COLOR_ORANGE), 0);
+        lv_obj_set_width(s_settings_labels[i], 212);
+        lv_label_set_long_mode(s_settings_labels[i], LV_LABEL_LONG_CLIP);
+        lv_obj_center(s_settings_labels[i]);
+    }
+    s_settings_help_panel = panel(s_settings_scr, 8, 103, 224, 190, COLOR_BG, COLOR_ORANGE);
+    lv_obj_t *help = lv_label_create(s_settings_help_panel);
+    lv_obj_set_pos(help, 5, 5);
+    lv_obj_set_width(help, 212);
+    lv_obj_set_style_text_font(help, &eva_font_radio_16, 0);
+    lv_obj_set_style_text_color(help, lv_color_hex(COLOR_ORANGE), 0);
+    lv_label_set_text(help, "操作说明\n上下：切歌或换台\nOK：播放或暂停\n长按上：调整音量\n电台长按下：选择城市\n播放器长按下：上传\n长按OK：设置或保存\n熄屏后首键仅唤醒");
+    s_settings_hint = upload_label(s_settings_scr, "", 297, &eva_font_radio_16, COLOR_ORANGE);
+    settings_draw();
+    lv_screen_load(s_settings_scr);
+    ESP_LOGI(TAG, "settings opened");
+}
+
+static void close_settings_mode(bool network)
+{
+    if (memcmp(&s_settings, &s_saved_settings, sizeof(s_settings))) {
+        esp_err_t err = eva_settings_save(&s_settings);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "settings save failed: %s", esp_err_to_name(err));
+            lv_label_set_text(s_settings_hint, "保存失败，请重试");
+            return;
+        }
+        s_saved_settings = s_settings;
+    }
+    lv_obj_t *screen = s_settings_scr;
+    s_settings_scr = NULL;
+    s_settings_hint = NULL;
+    s_settings_help_panel = NULL;
+    s_settings_help = false;
+    lv_screen_load(s_upload_mode ? s_upload_scr : s_radio_mode ? s_radio_scr : s_scr);
+    lv_obj_delete(screen);
+    s_source_request = network ? SOURCE_REQUEST_NETWORK :
+        s_settings.mode == EVA_SOURCE_RADIO ? SOURCE_REQUEST_RADIO : SOURCE_REQUEST_LOCAL;
+    ESP_LOGI(TAG, "settings applied: mode=%u brightness=%u timeout=%u network=%u",
+        s_settings.mode, s_settings.brightness, s_settings.screen_off_seconds, network);
+}
+
+static void settings_button(bsp_btn_t btn, bsp_btn_ev_t ev)
+{
+    if (s_settings_help) {
+        if (btn == BSP_BTN_OK && (ev == BSP_BTN_CLICK || ev == BSP_BTN_LONG)) {
+            s_settings_help = false;
+            settings_draw();
+        }
+        return;
+    }
+    if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) { close_settings_mode(false); return; }
+    if (ev != BSP_BTN_CLICK) return;
+    if (btn == BSP_BTN_OK) {
+        if (s_settings_item == EVA_SETTING_HELP) { s_settings_help = true; settings_draw(); return; }
+        if (s_settings_item == EVA_SETTING_NETWORK) { close_settings_mode(true); return; }
+        if (s_settings_item == EVA_SETTING_BACK) { close_settings_mode(false); return; }
+        s_settings_edit = !s_settings_edit;
+    } else if (btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) {
+        int direction = btn == BSP_BTN_UP ? -1 : 1;
+        if (s_settings_edit) {
+            if (eva_settings_adjust(&s_settings, s_settings_item, -direction) &&
+                s_settings_item == EVA_SETTING_BRIGHTNESS)
+                bsp_display_backlight(s_settings.brightness);
+        } else {
+            s_settings_item = (s_settings_item + EVA_SETTING_COUNT + direction) % EVA_SETTING_COUNT;
+        }
+    }
+    settings_draw();
 }
 
 static void sync_standby_screen(void)
@@ -614,6 +994,7 @@ static void boot_done(lv_timer_t *timer)
         lv_obj_delete(boot);
         s_boot_scr = NULL;
     }
+    if (s_settings.mode == EVA_SOURCE_RADIO) s_source_request = SOURCE_REQUEST_RADIO;
 }
 
 static void build_boot_screen(void)
@@ -623,7 +1004,7 @@ static void build_boot_screen(void)
     lv_screen_load(boot);
     lv_refr_now(lv_display_get_default());
     vTaskDelay(pdMS_TO_TICKS(40));
-    bsp_display_backlight(100);
+    bsp_display_backlight(s_settings.brightness);
     s_boot_started = lv_tick_get();
     s_boot_sound_done = false;
     if (xTaskCreate(boot_audio_task, "eva_intro", 4096, NULL, 4, NULL) != pdPASS) {
@@ -727,6 +1108,7 @@ audio_failed:
     bsp_audio_deinit();
     s_audio_suspended = true;
     s_audio_failed = true;
+    s_audio_task = NULL;
     vTaskDelete(NULL);
 }
 
@@ -760,6 +1142,17 @@ done:
 
 void eva_player_start(bool storage_ready, bool battery_ready)
 {
+    eva_settings_defaults(&s_settings);
+    esp_err_t settings_err = eva_settings_load(&s_settings);
+    if (settings_err != ESP_OK && settings_err != ESP_ERR_NVS_NOT_FOUND)
+        ESP_LOGW(TAG, "settings load failed; defaults retained: %s", esp_err_to_name(settings_err));
+    s_saved_settings = s_settings;
+    s_settings_scr = NULL;
+    s_settings_hint = NULL;
+    s_screen_off = false;
+    s_wake_key = false;
+    s_last_activity = lv_tick_get();
+    s_source_request = SOURCE_REQUEST_NONE;
     s_storage_ready = storage_ready;
     s_storage_scan_done = storage_ready;
     s_battery_ready = battery_ready;
@@ -778,6 +1171,9 @@ void eva_player_start(bool storage_ready, bool battery_ready)
     s_audio_reset = false;
     s_audio_task = NULL;
     s_upload_mode = false;
+    s_radio_mode = false;
+    s_radio_station = 0;
+    s_radio_scr = s_radio_title = s_radio_status = NULL;
     s_volume_scr = NULL;
     s_volume_value = NULL;
     s_volume_fill = NULL;
@@ -799,7 +1195,26 @@ void eva_player_set_storage_ready(bool storage_ready)
 
 void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)
 {
+    s_last_activity = lv_tick_get();
+    if (s_screen_off) {
+        bsp_display_backlight(s_settings.brightness);
+        s_screen_off = false;
+        s_wake_key = true;
+        ESP_LOGI(TAG, "screen awake; first key consumed");
+    }
+    if (s_wake_key) {
+        if (ev == BSP_BTN_CLICK || ev == BSP_BTN_DOUBLE || ev == BSP_BTN_LONG) s_wake_key = false;
+        return;
+    }
     if (!s_ready) return;
+    if (s_settings_scr) { settings_button(btn, ev); return; }
+    if (btn == BSP_BTN_OK && ev == BSP_BTN_LONG) {
+        if (s_radio_list.screen) close_radio_list();
+        if (s_volume_scr) exit_volume_mode();
+        enter_settings_mode();
+        return;
+    }
+    if (s_radio_list.screen) { radio_list_button(btn, ev); return; }
 
     if (s_volume_scr) {
         if (ev == BSP_BTN_CLICK && btn == BSP_BTN_OK) {
@@ -817,6 +1232,41 @@ void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)
         if (btn == BSP_BTN_DOWN && ev == BSP_BTN_LONG) exit_upload_mode();
         return;
     }
+    if (s_radio_mode) {
+        if (s_radio_exit) return;
+        if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+            s_radio_start_pending = !eva_radio_player_busy();
+            if (!s_radio_start_pending) eva_radio_player_stop();
+        } else if ((btn == BSP_BTN_UP || btn == BSP_BTN_DOWN) && ev == BSP_BTN_CLICK) {
+            const eva_radio_city_t *city;
+            const eva_radio_station_t *station;
+            int direction = btn == BSP_BTN_UP ? -1 : 1;
+            {
+                eva_radio_city_at(s_radio_city, &city);
+                size_t count = eva_radio_stations_for_city(city->id), index = 0;
+                for (size_t i = 0; i < count; i++) {
+                    const eva_radio_station_t *candidate;
+                    eva_radio_station_for_city_at(city->id, i, &candidate);
+                    eva_radio_station_at(s_radio_station, &station);
+                    if (candidate->id == station->id) index = i;
+                }
+                eva_radio_station_for_city_at(city->id, (index + count + direction) % count, &station);
+            }
+            for (size_t i = 0; i < eva_radio_station_count(); i++) {
+                const eva_radio_station_t *candidate;
+                eva_radio_station_at(i, &candidate);
+                if (candidate->id == station->id) s_radio_station = i;
+            }
+            s_radio_start_pending = true;
+            eva_radio_player_stop();
+            radio_selection_draw();
+        } else if (btn == BSP_BTN_DOWN && ev == BSP_BTN_LONG) {
+            open_radio_list();
+        } else if (btn == BSP_BTN_UP && ev == BSP_BTN_LONG) {
+            enter_volume_mode();
+        }
+        return;
+    }
     if (btn == BSP_BTN_UP && ev == BSP_BTN_LONG &&
         !eva_player_is_standby(&s_model)) {
         enter_volume_mode();
@@ -829,7 +1279,6 @@ void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)
         enter_upload_mode();
         return;
     }
-
     eva_player_key_t key;
     if (btn == BSP_BTN_UP) key = EVA_PLAYER_KEY_UP;
     else if (btn == BSP_BTN_DOWN) key = EVA_PLAYER_KEY_DOWN;
