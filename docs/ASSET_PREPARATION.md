@@ -69,14 +69,16 @@ On Linux, with Node.js/npm on PATH:
 
 For a Noto CJK collection, select the Simplified Chinese face explicitly, for example --font /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc --font-index 2. On Windows, pass -CjkFontFile and optionally -CjkFontIndex to tools/prepare_local_font.ps1 alongside -FontFile. EVA_CJK_FONT_PATH is also accepted. Regenerate after changing radio/settings text or the city catalog.
 
-The current city catalog requires 211 non-ASCII characters; the generator derives this set from source rather than relying on a fixed count. Run tests/test_radio_fonts.py after generation to check coverage and the 240px layout. Changes to the catalog require new subsets even when the original player font is unchanged.
+The current city catalog requires 210 non-ASCII characters; the generator derives this set from source rather than relying on a fixed count. Run tests/test_radio_fonts.py after generation to check coverage and the 240px layout. Changes to the catalog require new subsets even when the original player font is unchanged.
 
 The generated main/eva_font_radio_16.c, main/eva_font_radio_20.c and extracted assets/fonts/radio-source.otf remain Git-ignored. The original font license still applies to any separately distributed binary; no font files are added to this repository.
 
 ## Linux workstation note
 
-The validated Linux environment uses Python 3.12.15 in .venv and a separate ESP-IDF 5.5.4 Python environment; Windows PowerShell wrappers above retain their stated Python requirements. After local assets are prepared, .venv/bin/python tools/idf_linux.py build size runs the installed toolchain. The wrapper checks configured paths but does not install dependencies or create substitute assets. The current app has only 76864 bytes free in its 2 MiB partition; regenerate and recheck Flash/internal RAM after changing fonts or the startup clip.
+The validated Linux environment uses Python 3.12.15 in .venv and a separate ESP-IDF 5.5.4 Python environment; Windows PowerShell wrappers above retain their stated Python requirements. After local assets are prepared, .venv/bin/python tools/idf_linux.py build size runs the installed toolchain. The wrapper checks configured paths but does not install dependencies or create substitute assets. The current app has 97168 bytes free in its 2 MiB partition; regenerate and recheck Flash/internal RAM after changing fonts or the startup clip.
 
 ## Firmware images
+
+Current clean-image delivery (2026-11-01) uses no preset songs because assets/preset_music/ is absent. It merges the generated bootloader, partition table and application, pads to 8 MiB and leaves NVS, PHY and music as 0xFF. Existing first-boot logic formats the blank music volume. This package does not copy device credentials or the song uploaded during testing. It passed byte checks but was not flashed as a full image; see [release commands and checksum](RELEASING.md). Optional song packages still use tools/package_factory.py and require real builder-supplied media.
 
 A merged `.bin` includes the embedded startup sound and generated UI images. Do not redistribute protected assets or a binary containing them without the required rights.

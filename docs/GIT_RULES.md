@@ -5,7 +5,7 @@
 ## 应该提交
 
 - `README.md`、`README.zh_CN.md`
-- `ARCHITECTURE.md`
+- `ARCHITECTURE.md`、`AGENTS.md`
 - `CONTRIBUTING.md`
 - `NOTICE.md`
 - `docs/*.md`
@@ -106,4 +106,4 @@ assets/promo/*.png
 
 ## 当前电台版提交边界
 
-公开docs/EVA_RADIO.md和docs/HARDWARE_TEST_20261030.md中的功能、验收摘要；原始串口日志、音源检查报告、旧设备Flash备份、字体/生成物、启动音和固件继续留在忽略目录。CONTEXT.md只在本机同步，不强制加入Git。main/idf_component.yml记录解码依赖版本；managed_components和dependencies.lock沿用现有忽略规则。
+公开 docs/README.md、docs/EVA_RADIO.md、docs/HARDWARE_TEST_20261101.md 的当前说明与验收摘要；docs/HARDWARE_TEST_20261030.md 保留为历史；原始串口日志、音源检查报告、旧设备Flash备份、字体/生成物、启动音和固件继续留在忽略目录。本轮完整 BIN、SHA-256、打包报告与交付说明仅保存在被忽略的 release/，不从设备整片备份生成公开固件。CONTEXT.md只在本机同步，不强制加入Git。main/idf_component.yml记录解码依赖版本；managed_components和dependencies.lock沿用现有忽略规则。

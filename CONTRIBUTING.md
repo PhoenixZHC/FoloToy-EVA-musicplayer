@@ -58,7 +58,11 @@ Radio catalogs retain stable station IDs used by NVS. Keep each city/station lis
 
 Radio setup/settings C harnesses run through pytest with isolated stubs; standalone catalog/model/stream C tests must also be compiled and executed, alongside the existing local-player C programs. On Linux, put the project .venv/bin on PATH so test subprocesses can find Node.js. The installed local IDF wrapper is .venv/bin/python tools/idf_linux.py build size; it does not install tools or prepare assets.
 
-The October 30 baseline is 30 Python tests passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. Tests depending on private media may skip; report them accurately. Current short listening and loudness acceptance do not imply all stations or long-running/cross-network playback have passed.
+The November 1 baseline is 32 Python tests passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. The skipped HTTP/catalog test requires three private preset songs that are absent locally; do not synthesize production media to remove the skip. The new navigation harness tests actual production functions with host-only boundary stubs. Device logs and their limits are in [current hardware evidence](docs/HARDWARE_TEST_20261101.md); they do not establish audible continuity or long-running/cross-network acceptance.
+
+## Documentation and Local Delivery
+
+Update both READMEs, the relevant technical document and current dated hardware evidence when behavior changes. Keep historical observations dated, and use [the documentation index](docs/README.md) to distinguish current guidance from history. Check full-image length, segments, blank private regions and SHA-256 before delivery. Full BINs, sidecar reports/checksums, fonts, music and raw serial logs stay local; only source and documentation are pushed. See [release guidance](docs/RELEASING.md).
 
 ## Pull Request Notes
 

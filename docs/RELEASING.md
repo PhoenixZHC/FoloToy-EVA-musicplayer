@@ -41,13 +41,13 @@ main/web_ui.h
 release/*.bin
 ```
 
-## Current Source Snapshot (2026-10-30)
+## Current Source Snapshot (2026-11-01)
 
-The current development source integrates local music, Chinese EVA settings and radio with 89 sampled MP3 streams across 19 mainland cities. The user confirmed the final layout, about one minute of continuous listening and improved loudness. Host checks: 30 Python passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. This is a source push, not a new firmware release or proof of long-term/all-station acceptance.
+Version remains 1.2.0-dev. Current navigation: long UP switches and persists local/radio mode, long DOWN opens/leaves the EVA hotspot, long OK opens/saves settings, and double OK on radio opens city/station selection. Volume, brightness, screen-off and read-only firmware version are in settings. Radio remains 19 cities/89 sampled streams.
 
-The locally flashed app is 2020288 bytes (0x1ed3c0), with 76864 bytes free in the 2 MiB app partition and 112364 bytes of static DRAM remaining. Build and application-only flash/hash verification passed; music and NVS were preserved. Do not publish the local binary, startup clip, generated fonts, raw serial logs or device backup. See [hardware evidence](HARDWARE_TEST_20261030.md) for verified and pending items.
+Full checks passed: Python 32 passed/1 skipped (three private preset songs absent), 9 standalone C programs and 3 JavaScript scripts, ESP-IDF 5.5.4 build/size. The app is 1999984 bytes (0x1e8470), with 97168 bytes free in its 2 MiB partition and 112356 bytes of static DRAM remaining. Application-only flash/hash verification passed, preserving NVS/music. Current serial checks and their limits are in [November 1 evidence](HARDWARE_TEST_20261101.md); earlier acceptance stays [historical](HARDWARE_TEST_20261030.md). Do not claim the new layout or audible continuity from logs alone.
 
-Before pushing, run the relevant tests/build, inspect staged files and diff, and confirm the destination branch. Push without force. Source publication does not authorize erasing or reflashing a device.
+Review staged source/docs and the destination branch, then push without force. Keep release/, local media/fonts, raw logs and device backups excluded. User authorization to publish source does not automatically authorize publicly redistributing embedded assets or reflashing hardware.
 
 ## Build Release
 
@@ -61,6 +61,37 @@ The merged image layout is:
 | `0x8000` | partition table |
 | `0x10000` | application |
 | `0x210000` | writable music FAT partition (populated in preset-song packages) |
+
+### Current Local Full Image (2026-11-01)
+
+- File: release/FoloToy-EVA-1.2.0-dev-full-8MB-20261101.bin.
+- Length: 8388608 bytes (8 MiB); flash at 0x0 on ESP32-C3 / 8MB / DIO / 80MHz.
+- SHA-256: aa990bc81ca76d64252a82a4d316d0c7d8f0507acf819c406959aa5a222be795.
+- Contents: current bootloader, partition table and the same application that passed device flash/hash checks. NVS (0x9000–0xefff), PHY (0xf000–0xffff) and music (0x210000–0x7fffff) are 0xFF. No user Wi-Fi credentials, settings or songs are included; music is initialized through existing first-boot logic.
+- Validation: exact length, SHA-256, byte-for-byte component comparisons and blank-region checks passed. The complete merged file was not flashed again; application-only device testing is separate evidence.
+- Local companions: same-name .sha256 and .json, plus release/交付说明.txt. These are not flash inputs and remain Git-ignored with the BIN.
+
+**Flashing the full image replaces existing songs and settings.** For an upgrade that preserves data, use the application at 0x10000 instead. This packaging task did not erase or reflash the existing device.
+
+To reproduce after preparing assets and building, run from the repository root in Windows PowerShell with ESP-IDF active:
+
+~~~powershell
+New-Item -ItemType Directory -Path 'release' -Force | Out-Null
+if (Test-Path -LiteralPath 'release/FoloToy-EVA-1.2.0-dev-full-8MB-20261101.bin') { throw 'Choose a new output name; the delivery already exists' }
+$espPython = Join-Path $env:IDF_PYTHON_ENV_PATH 'Scripts\python.exe'
+$mergeArgs = @(
+    '--chip', 'esp32c3', 'merge_bin', '--output', 'release/FoloToy-EVA-1.2.0-dev-full-8MB-20261101.bin',
+    '--flash_mode', 'dio', '--flash_freq', '80m', '--flash_size', '8MB', '--fill-flash-size', '8MB',
+    '0x0', 'build/bootloader/bootloader.bin',
+    '0x8000', 'build/partition_table/partition-table.bin',
+    '0x10000', 'build/FoloToy-AI-Passport.bin'
+)
+& $espPython -m esptool @mergeArgs
+if ($LASTEXITCODE -ne 0) { throw 'Full-image merge failed' }
+Get-FileHash -Algorithm SHA256 -LiteralPath 'release/FoloToy-EVA-1.2.0-dev-full-8MB-20261101.bin'
+~~~
+
+On Linux, use the active ESP-IDF environment's bin/python with the same esptool arguments; the project .venv is a separate tools/test environment. Do not overwrite a previous delivery file; choose a new dated name if inputs change. The recorded hash applies only to the exact local inputs above. Optional preset-song packages still use tools/package_factory.py; they require real media and are not the clean package described here.
 
 ### Historical October 1 Package (No Radio)
 

@@ -22,7 +22,20 @@ def test_every_radio_and_settings_character_has_a_generated_glyph(size):
 
 def test_chinese_menu_character_set_is_present():
     chars = set(required_characters())
-    assert set('系统设置网络电台城市选择本地播放器亮度自动熄屏保存并返回') <= chars
+    assert set('系统设置网络电台城市选择本地播放器亮度自动熄屏保存并返回音量版本双击') <= chars
+
+def test_new_navigation_captions_fit_their_panels():
+    path = ROOT / "assets/fonts/radio-source.otf"
+    if not path.is_file():
+        pytest.skip("local Chinese source font is required")
+    font = ImageFont.truetype(str(path), 16)
+    for caption in ("MP3 / 双击OK选择城市", "长按下返回 / 长按OK设置",
+                    "上下选择 / OK编辑或查看"):
+        assert font.getlength(caption) <= 222
+    catalog = (ROOT / "main/eva_radio_catalog.c").read_text(encoding="utf-8")
+    genres = re.findall(r'\{\s*\d+,\s*\d+,\s*"[^"]+",\s*"[^"]+",\s*"([^"]+)"', catalog)
+    assert genres
+    assert all(font.getlength(genre + " 32/32") <= 126 for genre in genres)
 
 def test_settings_help_and_radio_caption_fit_their_panels():
     path = ROOT / "assets/fonts/radio-source.otf"

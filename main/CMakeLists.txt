@@ -40,7 +40,7 @@ idf_component_register(
          "demo_audio.c"
          "demo_battery.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES esp_timer lwip
+    PRIV_REQUIRES esp_timer lwip esp_app_format
     REQUIRES bsp esp_wifi esp_http_server esp_http_client esp_netif nvs_flash fatfs wear_levelling json esp_audio_codec mbedtls
     EMBED_FILES "../assets/audio/startup.adpcm"
     EMBED_TXTFILES "eva_radio_setup.html"

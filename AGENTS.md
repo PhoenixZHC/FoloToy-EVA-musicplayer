@@ -40,3 +40,9 @@ Before submitting, build from the repository root and inspect warnings. Run rele
 ## Commit & Pull Request Guidelines
 
 History follows Conventional Commit-style subjects such as `feat(player): ...`, `feat(bsp): ...`, `fix(player): ...`, `fix(bsp): ...`, and `docs: ...`. Keep commits focused by subsystem. Pull requests should explain the hardware/revision tested, summarize behavior changes, list build and on-device results, and include photos or screenshots for display changes. Link related issues and call out wiring, pin-map, asset, licensing, Flash, or compatibility impacts.
+
+## Current Navigation and Delivery
+
+As of 2026-11-01, long UP switches local/radio, long DOWN opens or leaves the hotspot, and long OK opens/saves settings. Double OK on radio opens city/station selection; long DOWN inside lists returns one level. Volume is edited in settings alongside brightness and screen-off; version is read-only. The navigation harness extracts production functions and runs through tests/test_eva_navigation.py.
+
+Start documentation lookup at docs/README.md. Keep dated hardware records separate; current evidence is docs/HARDWARE_TEST_20261101.md. Clean complete images are local 8 MiB artifacts with blank NVS/music; never substitute a device dump or commit release/ outputs. Preparing a complete image does not authorize flashing it or clearing device data.

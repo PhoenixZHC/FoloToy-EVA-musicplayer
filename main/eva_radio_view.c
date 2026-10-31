@@ -41,10 +41,12 @@ void eva_radio_view_create(eva_radio_view_t *view)
     view->station = label(station, "正在加载电台", 0, 0, 210, &eva_font_radio_20, ORANGE);
     lv_obj_set_style_text_align(view->station, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(view->station);
-    lv_obj_t *state = eva_player_frame_panel(view->screen, 4, 206, 232, 46, BG, ORANGE);
-    view->status = label(state, "正在连接电台", 0, 0, 220, &eva_font_radio_16, ORANGE);
+    label(view->screen, "MP3 / 双击OK选择城市", 9, 188, 222, &eva_font_radio_16, ORANGE);
+    lv_obj_t *state = eva_player_frame_panel(view->screen, 4, 210, 232, 42, BG, ORANGE);
+    view->indicator = eva_player_frame_panel(state, 8, 16, 8, 8, ORANGE, ORANGE);
+    view->status = label(state, "正在连接电台", 0, 0, 200, &eva_font_radio_16, ORANGE);
     lv_obj_set_style_text_align(view->status, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(view->status);
+    lv_obj_align(view->status, LV_ALIGN_CENTER, 9, 0);
     eva_player_frame_panel(view->screen, 3, 258, 234, 45, GREEN, ORANGE);
     static const char *const controls[] = { "上台", "播放", "下台", "暂停" };
     for (int i = 0; i < 4; i++) {
@@ -59,9 +61,8 @@ void eva_radio_view_create(eva_radio_view_t *view)
 void eva_radio_view_selection(eva_radio_view_t *view, const char *city,
     const char *station, const char *genre, size_t index, size_t count)
 {
-    (void)genre;
     lv_label_set_text(view->city, city);
-    lv_label_set_text_fmt(view->detail, "电台 %02u/%02u", (unsigned)(index + 1), (unsigned)count);
+    lv_label_set_text_fmt(view->detail, "%s %02u/%02u", genre, (unsigned)(index + 1), (unsigned)count);
     lv_label_set_text(view->station, station);
 }
 
@@ -76,6 +77,7 @@ void eva_radio_view_battery(eva_radio_view_t *view, int bars)
 void eva_radio_view_playing(eva_radio_view_t *view, bool playing)
 {
     if ((int)playing == view->playing) return;
+    lv_obj_set_style_bg_color(view->indicator, lv_color_hex(playing ? EVA_FRAME_MAGENTA : ORANGE), 0);
     for (int i = 0; i < 4; i++) {
         bool active = playing ? i == 1 : i == 3;
         lv_obj_set_style_bg_color(view->controls[i], lv_color_hex(active ? EVA_FRAME_MAGENTA : BG), 0);

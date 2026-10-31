@@ -6,7 +6,7 @@ LV_FONT_DECLARE(eva_font_radio_16);
 LV_FONT_DECLARE(eva_font_radio_20);
 
 typedef struct {
-    lv_obj_t *screen, *city, *station, *detail, *status, *battery, *controls[4];
+    lv_obj_t *screen, *city, *station, *detail, *status, *indicator, *battery, *controls[4];
     int battery_bars, playing;
 } eva_radio_view_t;
 typedef struct { lv_obj_t *screen, *heading, *panels[5], *rows[5], *position; } eva_radio_list_view_t;

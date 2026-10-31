@@ -21,7 +21,7 @@ button:disabled,input:disabled{opacity:.5}p{line-height:1.6}#r{color:#f5a}small{
 <button id="save" disabled>保存 Wi-Fi</button>
 </form>
 <p id="r" role="status" aria-live="polite"></p>
-<small>保存后在设备长按 OK 打开设置，「模式」选择「网络电台」，再长按 OK 保存退出并连接。「网络设置」可重新打开配网热点。隐藏网络和仅 5 GHz 网络不会显示。</small>
+<small>保存后在设备长按下键退出热点，再长按上键切换到网络电台并连接；若已在电台模式，退出热点后自动恢复。「网络设置」可重新打开配网热点。隐藏网络和仅 5 GHz 网络不会显示。</small>
 <script>
 const f=document.getElementById('f'),s=document.getElementById('s'),p=document.getElementById('p');
 const scan=document.getElementById('scan'),save=document.getElementById('save');
@@ -63,7 +63,7 @@ f.onsubmit=async event=>{
     save.disabled=true;scan.disabled=true;
     try{
         const response=await fetch('/radio/network',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:network.ssid,password:network.secure?p.value:''})});
-        r.textContent=response.ok?'已保存。请在设备设置中将「模式」改为「网络电台」，保存退出后连接。':'保存失败：'+await response.text();
+        r.textContent=response.ok?'已保存。请长按下键退出热点；长按上键切换到网络电台，已有电台模式会自动恢复。':'保存失败：'+await response.text();
     }catch(error){r.textContent='保存失败，请重试：'+error.message;}
     finally{p.value='';scan.disabled=false;save.disabled=false;}
 };
