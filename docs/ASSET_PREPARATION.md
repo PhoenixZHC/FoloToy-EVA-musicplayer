@@ -59,6 +59,8 @@ The script generates fixed UI masks, 14 px and 20 px ASCII LVGL font subsets, an
 
 The generated font files stay local even when the chosen font permits redistribution. A fresh checkout needs to regenerate them before `idf.py build`; CMake reports a missing local asset if they are absent. `main/eva_logo_assets.c` is a separate image source.
 
+Every build runs `tools/check_web_ui.py`: the generated header must match the current HTML, CSS, audio encoder and logo source, and its decompressed page must include the radio setup entry. Existing but stale `main/web_ui.h` is rejected. Regenerate it with `.venv/bin/python tools/gen_web_ui.py` (set `EVA_FONT_PATH` if using a non-default local font), then rebuild. This avoids packaging an older music-only page while the source template already contains Wi-Fi setup.
+
 ## Chinese radio and settings fonts
 
 Radio, city/station selection and settings use separate 16/20 px Chinese subsets. The supplied Matisse font lacks some Simplified Chinese characters, so these screens use a builder-supplied CJK font, for example Noto Sans SC (SIL Open Font License 1.1). Existing EVA masks and the local player retain their original font. The generator checks every required character and fails visibly on missing glyphs; it does not silently substitute another font.
@@ -69,16 +71,18 @@ On Linux, with Node.js/npm on PATH:
 
 For a Noto CJK collection, select the Simplified Chinese face explicitly, for example --font /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc --font-index 2. On Windows, pass -CjkFontFile and optionally -CjkFontIndex to tools/prepare_local_font.ps1 alongside -FontFile. EVA_CJK_FONT_PATH is also accepted. Regenerate after changing radio/settings text or the city catalog.
 
-The current city catalog requires 210 non-ASCII characters; the generator derives this set from source rather than relying on a fixed count. Run tests/test_radio_fonts.py after generation to check coverage and the 240px layout. Changes to the catalog require new subsets even when the original player font is unchanged.
+The current radio/settings source requires 213 non-ASCII characters; the generator derives this set from source rather than relying on a fixed count. Run tests/test_radio_fonts.py after generation to check coverage and the 240px layout. Changes to the catalog or settings text require new subsets even when the original player font is unchanged.
 
 The generated main/eva_font_radio_16.c, main/eva_font_radio_20.c and extracted assets/fonts/radio-source.otf remain Git-ignored. The original font license still applies to any separately distributed binary; no font files are added to this repository.
 
 ## Linux workstation note
 
-The validated Linux environment uses Python 3.12.15 in .venv and a separate ESP-IDF 5.5.4 Python environment; Windows PowerShell wrappers above retain their stated Python requirements. After local assets are prepared, .venv/bin/python tools/idf_linux.py build size runs the installed toolchain. The wrapper checks configured paths but does not install dependencies or create substitute assets. The current app has 97168 bytes free in its 2 MiB partition; regenerate and recheck Flash/internal RAM after changing fonts or the startup clip.
+The validated Linux environment uses Python 3.12.15 in .venv and a separate ESP-IDF 5.5.4 Python environment; Windows PowerShell wrappers above retain their stated Python requirements. After local assets are prepared, .venv/bin/python tools/idf_linux.py build size runs the installed toolchain in build_linux_repo/ with its own sdkconfig generated from repository sdkconfig.defaults. The historical root sdkconfig is not used. Every build rejects effective settings that differ from declared repository defaults. The wrapper checks configured paths but does not install dependencies or create substitute assets. The November 3 repository-config app with buffered-playback and recovery fixes has 97456 bytes free in its 2 MiB partition and 112422 bytes of static DRAM remaining; regenerate and recheck Flash/internal RAM after changing fonts or the startup clip.
 
 ## Firmware images
 
-Current clean-image delivery (2026-11-01) uses no preset songs because assets/preset_music/ is absent. It merges the generated bootloader, partition table and application, pads to 8 MiB and leaves NVS, PHY and music as 0xFF. Existing first-boot logic formats the blank music volume. This package does not copy device credentials or the song uploaded during testing. It passed byte checks but was not flashed as a full image; see [release commands and checksum](RELEASING.md). Optional song packages still use tools/package_factory.py and require real builder-supplied media.
+Current formal 1.2.1 clean-image delivery (2026-11-03) uses no preset songs because assets/preset_music/ is absent. It merges the generated bootloader, partition table and application, pads to 8 MiB and leaves NVS, PHY and music as 0xFF. Existing first-boot logic formats the blank music volume. This package does not copy device credentials or the song uploaded during testing. It passed byte checks but was not flashed as a full image; see [release commands and checksum](RELEASING.md). Optional song packages still use tools/package_factory.py and require real builder-supplied media.
 
 A merged `.bin` includes the embedded startup sound and generated UI images. Do not redistribute protected assets or a binary containing them without the required rights.
+
+The current full image is release/FoloToy-EVA-1.2.1-full-8MB-20261103.bin. Only inputs from the same repository-config build_linux_repo/ were merged; formal 1.2.1 was not reflashed. See RELEASING.md for SHA256 and previous-build device evidence.

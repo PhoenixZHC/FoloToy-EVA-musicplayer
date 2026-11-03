@@ -21,6 +21,8 @@ static eva_player_model_t s_model;
 static eva_setting_item_t s_settings_item;
 static source_request_t s_source_request;
 static lv_obj_t screen;
+static lv_obj_t overlay;
+static lv_obj_t *s_screensaver;
 static lv_obj_t *s_settings_scr, *s_settings_hint, *s_settings_help_panel;
 static lv_obj_t *s_upload_scr, *s_radio_scr, *s_scr;
 static struct { lv_obj_t *screen; } s_radio_list;
@@ -39,6 +41,10 @@ static void bsp_display_backlight(int value) { backlight = value; }
 static void lv_label_set_text(lv_obj_t *obj, const char *value) { (void)obj; hint = value; }
 static void lv_screen_load(lv_obj_t *obj) { (void)obj; }
 static void lv_obj_delete(lv_obj_t *obj) { (void)obj; }
+static lv_obj_t *lv_layer_top(void) { return &overlay; }
+static lv_obj_t *create_nerv_logo(lv_obj_t *parent) { assert(parent == &overlay); return &overlay; }
+static void *lv_display_get_default(void) { return NULL; }
+static void lv_refr_now(void *display) { (void)display; }
 static void settings_draw(void) {}
 static esp_err_t eva_settings_save(const eva_settings_t *value)
 { if (!save_error) persisted_mode = value->mode; return save_error; }
@@ -124,6 +130,19 @@ int main(void)
     s_settings_item = EVA_SETTING_VERSION;
     settings_button(BSP_BTN_OK, BSP_BTN_CLICK);
     assert(!s_settings_edit);
+    s_settings_item = EVA_SETTING_SCREENSAVER;
+    settings_button(BSP_BTN_OK, BSP_BTN_CLICK);
+    settings_button(BSP_BTN_DOWN, BSP_BTN_CLICK);
+    assert(!s_settings.screensaver_enabled);
+    settings_button(BSP_BTN_UP, BSP_BTN_CLICK);
+    assert(s_settings.screensaver_enabled);
+    settings_button(BSP_BTN_OK, BSP_BTN_CLICK);
+    s_settings_item = EVA_SETTING_SCREENSAVER_BRIGHTNESS;
+    settings_button(BSP_BTN_OK, BSP_BTN_CLICK);
+    settings_button(BSP_BTN_UP, BSP_BTN_CLICK);
+    assert(s_settings.screensaver_brightness == 30 && s_settings.brightness == 100);
+    settings_button(BSP_BTN_OK, BSP_BTN_CLICK);
+    s_settings_item = EVA_SETTING_VERSION;
     settings_button(BSP_BTN_DOWN, BSP_BTN_CLICK);
     assert(s_settings_item == EVA_SETTING_HELP);
     volume_error = -1;
@@ -142,12 +161,31 @@ int main(void)
 
     s_radio_mode = false;
     s_source_request = SOURCE_REQUEST_NONE;
-    s_screen_off = true;
+    eva_player_handle_key(&s_model, EVA_PLAYER_KEY_OK, EVA_PLAYER_KEY_CLICK);
+    assert(eva_player_is_playing(&s_model));
+    s_settings.screensaver_brightness = 30;
+    s_last_activity = 100;
+    screen_idle_tick(30099);
+    assert(!s_screen_off && !s_screensaver);
+    screen_idle_tick(30100);
+    assert(s_screen_off && s_screensaver == &overlay && backlight == 30);
+    screen_idle_tick(30200);
+    assert(s_screensaver == &overlay && backlight == 30);
+    assert(eva_player_is_playing(&s_model));
     eva_player_handle_button(BSP_BTN_UP, BSP_BTN_PRESS);
     eva_player_handle_button(BSP_BTN_UP, BSP_BTN_LONG);
     assert(!s_screen_off && !s_wake_key && backlight == 100);
+    assert(!s_screensaver && eva_player_is_playing(&s_model));
     assert(s_source_request == SOURCE_REQUEST_NONE);
     eva_player_handle_button(BSP_BTN_UP, BSP_BTN_LONG);
     assert(s_source_request == SOURCE_REQUEST_RADIO);
+    s_source_request = SOURCE_REQUEST_NONE;
+    s_settings.screensaver_enabled = 0;
+    s_last_activity = 100;
+    screen_idle_tick(30100);
+    assert(s_screen_off && !s_screensaver && backlight == 0);
+    eva_player_handle_button(BSP_BTN_OK, BSP_BTN_CLICK);
+    assert(!s_screen_off && backlight == 100 && eva_player_is_playing(&s_model));
+    assert(s_source_request == SOURCE_REQUEST_NONE);
     return 0;
 }

@@ -6,4 +6,6 @@ User songs are uploaded through the device hotspot and stored in its Flash music
 
 The startup clip uses the persisted player volume and the same ES8311 curve as local music/radio. The current curve retains levels through 70%, raises 100% to +6 dB and explicitly mutes at 0%; changing audio assets still requires a build-size and real-device listening check. No audio or binary assets are added by the radio feature.
 
-Volume is now adjusted from long-OK settings; long UP switches local/radio rather than opening a separate volume screen. The 2026-11-01 clean full image contains the startup clip but no user songs or preset library. Optional presets remain a separate builder choice. See [current packaging](../../docs/RELEASING.md) and [device evidence](../../docs/HARDWARE_TEST_20261101.md); codec initialization logs alone do not confirm the audible startup sound.
+Volume is now adjusted from long-OK settings; long UP switches local/radio rather than opening a separate volume screen. The formal 1.2.1 clean full image (2026-11-03) contains the startup clip but no user songs or preset library. Optional presets remain a separate builder choice. See [current packaging](../../docs/RELEASING.md) and [device evidence](../../docs/HARDWARE_TEST_20261103.md); codec initialization logs alone do not confirm the audible startup sound.
+
+Formal 1.2.1 was built and packaged without another flash or listening session; latest device listening evidence belongs to the preceding playback-fix build.

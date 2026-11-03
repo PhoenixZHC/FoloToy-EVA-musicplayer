@@ -20,7 +20,8 @@ def test_navigation_and_settings(tmp_path):
               "-L" + str(dev / "lib/x86_64-linux-gnu")]
     source = (ROOT / "main/eva_player.c").read_text(encoding="utf-8")
     functions = []
-    for signature in ("static void close_settings_mode(bool network)",
+    for signature in ("static void screen_idle_tick(uint32_t now)",
+                      "static void close_settings_mode(bool network)",
                       "static void settings_button(bsp_btn_t btn, bsp_btn_ev_t ev)",
                       "static void process_source_request(void)",
                       "void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)"):

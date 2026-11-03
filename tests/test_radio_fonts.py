@@ -45,6 +45,8 @@ def test_settings_help_and_radio_caption_fit_their_panels():
     large = ImageFont.truetype(str(path), 20)
     assert large.getlength("上海") <= 126
     assert small.getlength("电台 02/02") <= 126
+    for caption in ("屏保开关    开启", "屏保开关    关闭", "屏保亮度    100%"):
+        assert small.getlength(caption) <= 212
     source = (ROOT / "main/eva_player.c").read_text(encoding="utf-8")
     match = re.search(r"lv_label_set_text\(help, (\"[^\"]*\")\);", source)
     assert match, "settings must contain an operation guide"

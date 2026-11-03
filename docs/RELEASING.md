@@ -41,7 +41,13 @@ main/web_ui.h
 release/*.bin
 ```
 
-## Current Source Snapshot (2026-11-01)
+## Current Local Application (2026-11-03)
+
+Build on the Ubuntu workstation with `.venv/bin/python tools/idf_linux.py build size`. This uses repository `sdkconfig.defaults`, an explicit ESP32-C3 target and a build-local `sdkconfig` under `build_linux_repo/`; every build checks declared defaults. Do not use the root historical config or earlier build directories for current delivery.
+
+Formal version **1.2.1** has no development suffix. ESP-IDF 5.5.4 build/size passed with repository defaults. Application: 1,999,696 bytes; app partition free: 97,456 bytes; static DRAM free: 112,422 bytes. Host regression: 47 passed, 0 failed. Earlier 1.2.0-dev with the same playback fixes passed application-only flash/hash verification and reached 99.4% steady PCM/wall time. The user reported essentially no stutter and cancelled the 30-minute run. Remaining 91–204 ms feed gaps and rebuffer events prevent a long-term zero-stutter guarantee. Formal 1.2.1 was rebuilt and packaged without another flash. See [November 3 evidence](HARDWARE_TEST_20261103.md). Application SHA256: `0fa700783de55353602be54307ee7c26f499779b434b131df258ae8b835ea8de`. Earlier same-day screensaver/webfix packages used obsolete configuration and are not current delivery.
+
+## Historical Source Snapshot (2026-11-01)
 
 Version remains 1.2.0-dev. Current navigation: long UP switches and persists local/radio mode, long DOWN opens/leaves the EVA hotspot, long OK opens/saves settings, and double OK on radio opens city/station selection. Volume, brightness, screen-off and read-only firmware version are in settings. Radio remains 19 cities/89 sampled streams.
 
@@ -51,7 +57,7 @@ Review staged source/docs and the destination branch, then push without force. K
 
 ## Build Release
 
-Only publish a full firmware image when every embedded asset can be redistributed. The current source identifies itself as `1.2.0-dev`, not a final numbered release.
+Only publish a full firmware image when every embedded asset can be redistributed. The current source identifies itself as formal release `1.2.1`; development suffixes are removed.
 
 The merged image layout is:
 
@@ -62,7 +68,26 @@ The merged image layout is:
 | `0x10000` | application |
 | `0x210000` | writable music FAT partition (populated in preset-song packages) |
 
-### Current Local Full Image (2026-11-01)
+### Current Formal Full Image (2026-11-03)
+
+Formal full image: `release/FoloToy-EVA-1.2.1-full-8MB-20261103.bin`, 8,388,608 bytes, ESP32-C3 / 8MB / DIO / 80MHz, flash at `0x0`. Bootloader, partition table and 1.2.1 application come from the same build_linux_repo/ build. Component, version and blank-region checks passed. NVS, PHY and music are 0xFF, without user credentials or songs; embedded startup audio and UI fonts remain. **Full flashing replaces existing songs and settings.** This image was not flashed. The BIN and same-name SHA256/JSON companions stay Git-ignored. SHA256: `0974a5164f1dd115d597bb728bc9a7b3e542865fdd684656a0d49d87db0c4ac9`.
+
+### Reproduce the clean formal image on this Ubuntu workstation
+
+After a successful repository-config build, use the active ESP-IDF Python environment. Choose a new output name if the delivery already exists; this command only merges files and does not flash the device.
+
+~~~bash
+/home/phoenix/.espressif/python_env/idf5.5_py3.12_env/bin/python -m esptool --chip esp32c3 merge_bin \
+  --output release/FoloToy-EVA-1.2.1-full-8MB-20261103.bin \
+  --flash_mode dio --flash_freq 80m --flash_size 8MB --fill-flash-size 8MB \
+  0x0 build_linux_repo/bootloader/bootloader.bin \
+  0x8000 build_linux_repo/partition_table/partition-table.bin \
+  0x10000 build_linux_repo/FoloToy-AI-Passport.bin
+~~~
+
+The current application SHA256 is 0fa700783de55353602be54307ee7c26f499779b434b131df258ae8b835ea8de. Use only the matching build inputs. The complete BIN, .sha256, .json and 交付说明-1.2.1.txt stay under ignored release/.
+
+### Historical Local Full Image (2026-11-01)
 
 - File: release/FoloToy-EVA-1.2.0-dev-full-8MB-20261101.bin.
 - Length: 8388608 bytes (8 MiB); flash at 0x0 on ESP32-C3 / 8MB / DIO / 80MHz.
@@ -73,7 +98,9 @@ The merged image layout is:
 
 **Flashing the full image replaces existing songs and settings.** For an upgrade that preserves data, use the application at 0x10000 instead. This packaging task did not erase or reflash the existing device.
 
-To reproduce after preparing assets and building, run from the repository root in Windows PowerShell with ESP-IDF active:
+The commands below record the historical Windows packaging workflow and input paths. For a new Linux package, first build and validate `build_linux_repo/`, then use only bootloader, partition table and app from that same directory with a new output name. Do not copy the historical `build/` input paths or old package name.
+
+To reproduce the historical package after preparing its assets and building, run from the repository root in Windows PowerShell with ESP-IDF active:
 
 ~~~powershell
 New-Item -ItemType Directory -Path 'release' -Force | Out-Null

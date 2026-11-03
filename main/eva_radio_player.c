@@ -64,6 +64,9 @@ static void tcp_receive_snapshot(void *arg)
 
 static void report_tcp_receive(esp_http_client_handle_t http)
 {
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+        ESP_LOGI(TAG, "Wi-Fi receive: rssi=%d channel=%u", ap.rssi, ap.primary);
     struct sockaddr_storage address;
     socklen_t length = sizeof(address);
     int socket = esp_http_client_get_socket(http);
@@ -80,6 +83,7 @@ typedef struct {
     uint32_t received_bytes;
     uint64_t pcm_us;
     uint32_t read_max_us, decode_max_us, write_max_us;
+    uint32_t feed_gap_max_us;
     unsigned consumed_mismatches;
 } stream_diagnostics_t;
 
@@ -89,11 +93,11 @@ static void report_stream_diagnostics(const eva_radio_station_t *station,
     int64_t now = esp_timer_get_time();
     if (!force && now - stats->started_us < 30000000) return;
     ESP_LOGI(TAG, "stream stats: station=%u elapsed_ms=%llu bytes=%u pcm_ms=%llu "
-        "read_max_us=%u decode_max_us=%u write_max_us=%u consumed_mismatch=%u",
+        "read_max_us=%u decode_max_us=%u write_max_us=%u feed_gap_max_us=%u consumed_mismatch=%u",
         (unsigned)station->id, (unsigned long long)((now - stats->started_us) / 1000),
         (unsigned)stats->received_bytes, (unsigned long long)(stats->pcm_us / 1000),
         (unsigned)stats->read_max_us, (unsigned)stats->decode_max_us,
-        (unsigned)stats->write_max_us, stats->consumed_mismatches);
+        (unsigned)stats->write_max_us, (unsigned)stats->feed_gap_max_us, stats->consumed_mismatches);
     *stats = (stream_diagnostics_t){ .started_us = now };
 }
 
@@ -193,42 +197,73 @@ static esp_err_t play_stream(const eva_radio_station_t *station, bool *played)
     unsigned invalid = 0;
     bool hardware = false;
     bool prebuffering = true;
+    bool stream_ended = false;
+    int read_timeout_ms = cfg.timeout_ms;
+    int64_t last_write_us = 0;
     int volume = -1;
     TickType_t last_data = xTaskGetTickCount();
     TickType_t last_report = last_data;
     while (!atomic_load(&s_cancel)) {
         size_t want = INPUT_SIZE - used;
         if (want > 256) want = 256;
-        int64_t operation_start = esp_timer_get_time();
-        int count = esp_http_client_read(http, (char *)input + used, want);
-        uint32_t operation_us = (uint32_t)(esp_timer_get_time() - operation_start);
-        if (operation_us > stats.read_max_us) stats.read_max_us = operation_us;
-        if (count > 0) stats.received_bytes += (uint32_t)count;
-        report_stream_diagnostics(station, &stats, false);
-        if (count == -ESP_ERR_HTTP_EAGAIN) {
-            atomic_store(&s_status, EVA_RADIO_BUFFERING);
-            prebuffering = true;
-            report_tcp_receive(http);
-            /* 短暂超时不是断流，保留当前半帧；每次读取仍有 1.5 秒取消边界。 */
-            if ((TickType_t)(xTaskGetTickCount() - last_data) < pdMS_TO_TICKS(10000)) {
-                ESP_LOGW(TAG, "stream read timeout; waiting: heap=%u largest=%u",
-                    (unsigned)esp_get_free_heap_size(),
-                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-                ESP_LOGW(TAG, "allocation failures=%u last_size=%u",
-                    atomic_load(&s_allocation_failures), atomic_load(&s_last_failed_size));
-                continue;
+        int64_t operation_start;
+        uint32_t operation_us;
+        if (want && !stream_ended) {
+            size_t ready_frame = eva_radio_mp3_frame_size(input, used);
+            bool frame_ready = ready_frame && used >= ready_frame;
+            if (!prebuffering && !frame_ready) {
+                /* 储备已耗尽，即使长读最终成功，也要先重新积累再播放。 */
+                prebuffering = true;
+                atomic_store(&s_status, EVA_RADIO_BUFFERING);
+                ESP_LOGW(TAG, "buffer depleted: pending=%u; refilling", (unsigned)used);
+                report_tcp_receive(http);
             }
-            result = ESP_ERR_TIMEOUT;
+            /* 有帧可播时不能在 HTTP 中等待数百毫秒；空缓冲仍允许长等。 */
+            int timeout_ms = !prebuffering && frame_ready ? 2 : 1500;
+            if (timeout_ms != read_timeout_ms) {
+                esp_err_t timeout_err = esp_http_client_set_timeout_ms(http, timeout_ms);
+                if (timeout_err != ESP_OK) { result = timeout_err; goto done; }
+                read_timeout_ms = timeout_ms;
+            }
+            operation_start = esp_timer_get_time();
+            int count = esp_http_client_read(http, (char *)input + used, want);
+            operation_us = (uint32_t)(esp_timer_get_time() - operation_start);
+            if (operation_us > stats.read_max_us) stats.read_max_us = operation_us;
+            if (count == -ESP_ERR_HTTP_EAGAIN) {
+                /* 短轮询没有新数据时直接播放已存帧，不触发重新预缓冲。 */
+                if (prebuffering || !frame_ready) {
+                    atomic_store(&s_status, EVA_RADIO_BUFFERING);
+                    prebuffering = true;
+                    report_tcp_receive(http);
+                    if ((TickType_t)(xTaskGetTickCount() - last_data) >= pdMS_TO_TICKS(10000)) {
+                        result = ESP_ERR_TIMEOUT;
+                        goto done;
+                    }
+                    ESP_LOGW(TAG, "stream read timeout; waiting: heap=%u largest=%u",
+                        (unsigned)esp_get_free_heap_size(),
+                        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+                    ESP_LOGW(TAG, "allocation failures=%u last_size=%u",
+                        atomic_load(&s_allocation_failures), atomic_load(&s_last_failed_size));
+                    report_stream_diagnostics(station, &stats, false);
+                    continue;
+                }
+            } else if (count <= 0) {
+                ESP_LOGW(TAG, "stream read ended: count=%d errno=%d", count, esp_http_client_get_errno(http));
+                /* 先播完已收到的完整帧，再交给外层重连。 */
+                result = ESP_FAIL;
+                stream_ended = true;
+            } else {
+                stats.received_bytes += (uint32_t)count;
+                last_data = xTaskGetTickCount();
+                used += eva_radio_icy_filter(&s_icy, input + used, (size_t)count);
+            }
         }
-        if (count <= 0) {
-            ESP_LOGW(TAG, "stream read ended: count=%d errno=%d", count, esp_http_client_get_errno(http));
-            goto done;
-        }
-        last_data = xTaskGetTickCount();
-        used += eva_radio_icy_filter(&s_icy, input + used, (size_t)count);
         /* 复用现有 4 KiB 输入区积累约 0.45 秒的 64k 流。
            先储备再输出，让播放期间 TCP 接收队列吸收网络抖动，不新增缓冲分配。 */
-        if (prebuffering && used < INPUT_SIZE - 512U) continue;
+        if (prebuffering && used < INPUT_SIZE - 512U && !stream_ended) {
+            report_stream_diagnostics(station, &stats, false);
+            continue;
+        }
         prebuffering = false;
         size_t offset = 0;
         while (used - offset >= 4 && !atomic_load(&s_cancel)) {
@@ -290,6 +325,10 @@ static esp_err_t play_stream(const eva_radio_station_t *station, bool *played)
                 result = audio_err;
                 goto done;
             }
+            int64_t write_completed_us = esp_timer_get_time();
+            if (last_write_us && write_completed_us - last_write_us > stats.feed_gap_max_us)
+                stats.feed_gap_max_us = (uint32_t)(write_completed_us - last_write_us);
+            last_write_us = write_completed_us;
             stats.pcm_us += (uint64_t)samples * 1000000U / info.sample_rate;
             if (atomic_load(&s_status) != EVA_RADIO_PLAYING ||
                 (TickType_t)(xTaskGetTickCount() - last_report) >= pdMS_TO_TICKS(30000)) {
@@ -302,9 +341,13 @@ static esp_err_t play_stream(const eva_radio_station_t *station, bool *played)
             invalid = 0;
             *played = true;
             atomic_store(&s_status, EVA_RADIO_PLAYING);
+            /* 每轮仅输出一帧，留下预存音频并及时补充网络数据。 */
+            break;
         }
         memmove(input, input + offset, used - offset);
         used -= offset;
+        report_stream_diagnostics(station, &stats, false);
+        if (stream_ended && !offset) goto done;
         if (used == INPUT_SIZE) goto done;
     }
     result = ESP_OK;

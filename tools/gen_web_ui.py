@@ -10,6 +10,7 @@ import re
 from fontTools import subset
 from fontTools.ttLib import TTFont
 from PIL import Image
+from check_web_ui import source_digest
 
 root = Path(__file__).resolve().parents[1]
 template = (root / "main/web_ui.html").read_text(encoding="utf-8")
@@ -66,6 +67,7 @@ body = ",".join(str(byte) for byte in data)
 output = root / "main/web_ui.h"
 output.write_text(
     "#pragma once\n#include <stdint.h>\n"
+    f'#define WEB_UI_SOURCE_SHA256 "{source_digest(root)}"\n'
     f"static const uint8_t WEB_UI_HTML[] = {{{body}}};\n"
     f"static const unsigned int WEB_UI_HTML_LEN = {len(data)};\n",
     encoding="utf-8",

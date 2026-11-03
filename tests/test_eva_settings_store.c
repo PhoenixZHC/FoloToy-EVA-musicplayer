@@ -15,7 +15,14 @@ int main(void)
 {
     eva_settings_t value; eva_settings_defaults(&value);
     assert(eva_settings_load(&value)==ESP_ERR_NVS_NOT_FOUND);
+    /* 旧固件的四字节设置升级后不能丢失。 */
+    const unsigned char legacy[] = {0x31,0x53,0x56,0x45,1,40,30,0};
+    memcpy(blob,legacy,sizeof(legacy)); blob_size=sizeof(legacy);
+    assert(eva_settings_load(&value)==ESP_OK);
+    assert(value.mode==EVA_SOURCE_RADIO && value.brightness==40 && value.screen_off_seconds==30);
+    assert(value.screensaver_enabled==1 && value.screensaver_brightness==20);
     value.mode=EVA_SOURCE_RADIO; value.brightness=40; value.screen_off_seconds=30;
+    value.screensaver_enabled=0; value.screensaver_brightness=60;
     assert(eva_settings_save(&value)==ESP_OK);
     eva_settings_t loaded={0}; assert(eva_settings_load(&loaded)==ESP_OK);
     assert(!memcmp(&value,&loaded,sizeof(value)));

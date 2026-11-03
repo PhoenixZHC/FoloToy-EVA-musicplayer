@@ -3,12 +3,15 @@
 static const uint16_t s_timeouts[] = {0, 15, 30, 60, 120, 300};
 void eva_settings_defaults(eva_settings_t *settings)
 {
-    *settings = (eva_settings_t){.mode=EVA_SOURCE_LOCAL, .brightness=100, .screen_off_seconds=0};
+    *settings = (eva_settings_t){.mode=EVA_SOURCE_LOCAL, .brightness=100, .screen_off_seconds=0,
+                               .screensaver_enabled=1, .screensaver_brightness=20};
 }
 bool eva_settings_valid(const eva_settings_t *settings)
 {
     if (!settings || settings->mode > EVA_SOURCE_RADIO || settings->brightness < 10 ||
-        settings->brightness > 100 || settings->brightness % 10) return false;
+        settings->brightness > 100 || settings->brightness % 10 ||
+        settings->screensaver_enabled > 1 || settings->screensaver_brightness < 10 ||
+        settings->screensaver_brightness > 100 || settings->screensaver_brightness % 10) return false;
     for (size_t i=0; i<sizeof(s_timeouts)/sizeof(s_timeouts[0]); i++)
         if (settings->screen_off_seconds == s_timeouts[i]) return true;
     return false;
@@ -17,10 +20,13 @@ bool eva_settings_adjust(eva_settings_t *settings, eva_setting_item_t item, int 
 {
     if (!eva_settings_valid(settings) || !direction) return false;
     if (item == EVA_SETTING_MODE) { settings->mode ^= 1U; return true; }
-    if (item == EVA_SETTING_BRIGHTNESS) {
-        int next = settings->brightness + (direction > 0 ? 10 : -10);
+    if (item == EVA_SETTING_SCREENSAVER) { settings->screensaver_enabled ^= 1U; return true; }
+    if (item == EVA_SETTING_BRIGHTNESS || item == EVA_SETTING_SCREENSAVER_BRIGHTNESS) {
+        uint8_t *brightness = item == EVA_SETTING_BRIGHTNESS ?
+            &settings->brightness : &settings->screensaver_brightness;
+        int next = *brightness + (direction > 0 ? 10 : -10);
         if (next < 10 || next > 100) return false;
-        settings->brightness = (uint8_t)next;
+        *brightness = (uint8_t)next;
         return true;
     }
     if (item == EVA_SETTING_SCREEN_OFF) {

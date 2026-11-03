@@ -104,6 +104,7 @@ static lv_obj_t *s_settings_scr, *s_settings_rows[EVA_SETTING_COUNT];
 static lv_obj_t *s_settings_labels[EVA_SETTING_COUNT], *s_settings_hint;
 static eva_setting_item_t s_settings_item;
 static bool s_settings_edit, s_settings_help, s_screen_off, s_wake_key;
+static lv_obj_t *s_screensaver;
 static lv_obj_t *s_settings_help_panel;
 static uint32_t s_last_activity;
 typedef enum { SOURCE_REQUEST_NONE, SOURCE_REQUEST_LOCAL, SOURCE_REQUEST_RADIO,
@@ -367,11 +368,14 @@ static void make_button(lv_obj_t *parent, int index, const lv_image_dsc_t *icon,
     lv_obj_center(img);
 }
 
-static lv_obj_t *create_nerv_logo_screen(void)
+static lv_obj_t *create_nerv_logo(lv_obj_t *parent)
 {
-    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_t *scr = lv_obj_create(parent);
+    if (parent) lv_obj_set_size(scr, lv_pct(100), lv_pct(100));
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(scr, 0, 0);
     lv_obj_set_style_bg_color(scr, lv_color_hex(COLOR_BG), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(scr, 0, 0);
     lv_obj_set_style_pad_all(scr, 0, 0);
 
@@ -379,6 +383,11 @@ static lv_obj_t *create_nerv_logo_screen(void)
     lv_image_set_src(logo, &eva_logo_nerv);
     lv_obj_center(logo);
     return scr;
+}
+
+static lv_obj_t *create_nerv_logo_screen(void)
+{
+    return create_nerv_logo(NULL);
 }
 
 static void build_player_screen(void)
@@ -740,9 +749,14 @@ static void exit_upload_mode(void)
 static void screen_idle_tick(uint32_t now)
 {
     if (!s_screen_off && eva_settings_screen_due(&s_settings, s_last_activity, now)) {
-        bsp_display_backlight(0);
+        if (s_settings.screensaver_enabled) {
+            /* 顶层覆盖，底下的电台/设置页面仍可正常更新和切换。 */
+            s_screensaver = create_nerv_logo(lv_layer_top());
+            lv_refr_now(lv_display_get_default());
+        }
+        bsp_display_backlight(s_settings.screensaver_enabled ? s_settings.screensaver_brightness : 0);
         s_screen_off = true;
-        ESP_LOGI(TAG, "screen off; audio continues");
+        ESP_LOGI(TAG, "screen idle: screensaver=%u; audio continues", s_settings.screensaver_enabled);
     }
 }
 
@@ -786,6 +800,10 @@ static void settings_draw(void)
     if (s_settings.screen_off_seconds)
         lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_SCREEN_OFF], "自动熄屏    %u 秒", s_settings.screen_off_seconds);
     else lv_label_set_text(s_settings_labels[EVA_SETTING_SCREEN_OFF], "自动熄屏    常亮");
+    lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_SCREENSAVER], "屏保开关    %s",
+        s_settings.screensaver_enabled ? "开启" : "关闭");
+    lv_label_set_text_fmt(s_settings_labels[EVA_SETTING_SCREENSAVER_BRIGHTNESS], "屏保亮度    %u%%",
+        s_settings.screensaver_brightness);
     lv_label_set_text(s_settings_labels[EVA_SETTING_NETWORK], "网络设置    Wi-Fi配网");
     lv_label_set_text(s_settings_labels[EVA_SETTING_HELP], "操作说明");
     lv_label_set_text(s_settings_labels[EVA_SETTING_BACK], "保存并返回");
@@ -844,7 +862,7 @@ static void enter_settings_mode(void)
     lv_obj_set_width(help, 212);
     lv_obj_set_style_text_font(help, &eva_font_radio_16, 0);
     lv_obj_set_style_text_color(help, lv_color_hex(COLOR_ORANGE), 0);
-    lv_label_set_text(help, "操作说明\n上下：切歌或换台\nOK：播放或暂停\n长按上：切换播放模式\n长按下：热点或返回\n电台双击OK：选择城市\n长按OK：设置或保存\n设置内调整音量与亮度\n熄屏后首键仅唤醒");
+    lv_label_set_text(help, "操作说明\n上下：切歌或换台\nOK：播放或暂停\n长按上：切换播放模式\n长按下：热点或返回\n电台双击OK：选择城市\n长按OK：设置或保存\n屏保按自动熄屏时间触发\n屏保或熄屏后首键仅唤醒");
     s_settings_hint = upload_label(s_settings_scr, "", 297, &eva_font_radio_16, COLOR_ORANGE);
     settings_draw();
     lv_screen_load(s_settings_scr);
@@ -1096,6 +1114,7 @@ void eva_player_start(bool storage_ready, bool battery_ready)
     s_settings_scr = NULL;
     s_settings_hint = NULL;
     s_screen_off = false;
+    s_screensaver = NULL;
     s_wake_key = false;
     s_last_activity = lv_tick_get();
     s_source_request = SOURCE_REQUEST_NONE;
@@ -1141,6 +1160,11 @@ void eva_player_handle_button(bsp_btn_t btn, bsp_btn_ev_t ev)
 {
     s_last_activity = lv_tick_get();
     if (s_screen_off) {
+        if (s_screensaver) {
+            lv_obj_delete(s_screensaver);
+            s_screensaver = NULL;
+            lv_refr_now(lv_display_get_default());
+        }
         bsp_display_backlight(s_settings.brightness);
         s_screen_off = false;
         s_wake_key = true;

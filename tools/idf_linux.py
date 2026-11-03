@@ -3,6 +3,32 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from check_sdkconfig import read_config
+
+
+def repository_build_args(root, args):
+    # 每个构建目录独立生成 sdkconfig，不读取根目录的历史缓存。
+    build = root / 'build_linux_repo'
+    for index, arg in enumerate(args):
+        if arg in ('-B', '--build-dir'):
+            build = Path(args[index + 1])
+        elif arg.startswith('--build-dir='):
+            build = Path(arg.split('=', 1)[1])
+        elif arg.startswith('-B') and len(arg) > 2:
+            build = Path(arg[2:])
+    if not build.is_absolute():
+        build = root / build
+    for arg in args:
+        definition = arg[2:] if arg.startswith('-D') else arg
+        key = definition.split('=', 1)[0].split(':', 1)[0]
+        if '=' in definition and key in ('SDKCONFIG', 'SDKCONFIG_DEFAULTS', 'IDF_TARGET'):
+            raise ValueError('请勿覆盖 SDKCONFIG/SDKCONFIG_DEFAULTS/IDF_TARGET；必须使用仓库配置')
+    has_build = any(arg in ('-B', '--build-dir') or arg.startswith('-B') or
+                    arg.startswith('--build-dir=') for arg in args)
+    prefix = [] if has_build else ['-B', str(build)]
+    target = read_config(root / 'sdkconfig.defaults')['CONFIG_IDF_TARGET'].strip('"')
+    return prefix + ['-D', f'IDF_TARGET={target}', '-D', f'SDKCONFIG={build / "sdkconfig"}',
+                     '-D', f'SDKCONFIG_DEFAULTS={root / "sdkconfig.defaults"}'] + args
 
 
 def main():
@@ -35,6 +61,11 @@ def main():
             if result.returncode:
                 return result.returncode
         return 0
+    try:
+        args = repository_build_args(root, args)
+    except (ValueError, IndexError) as error:
+        print(error, file=sys.stderr)
+        return 1
     return subprocess.run(command + args, cwd=root, env=env).returncode
 
 

@@ -58,7 +58,7 @@ Radio catalogs retain stable station IDs used by NVS. Keep each city/station lis
 
 Radio setup/settings C harnesses run through pytest with isolated stubs; standalone catalog/model/stream C tests must also be compiled and executed, alongside the existing local-player C programs. On Linux, put the project .venv/bin on PATH so test subprocesses can find Node.js. The installed local IDF wrapper is .venv/bin/python tools/idf_linux.py build size; it does not install tools or prepare assets.
 
-The November 1 baseline is 32 Python tests passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. The skipped HTTP/catalog test requires three private preset songs that are absent locally; do not synthesize production media to remove the skip. The new navigation harness tests actual production functions with host-only boundary stubs. Device logs and their limits are in [current hardware evidence](docs/HARDWARE_TEST_20261101.md); they do not establish audible continuity or long-running/cross-network acceptance.
+The November 1 baseline is 32 Python tests passed/1 skipped, 9 standalone C programs and 3 JavaScript scripts passed. The skipped HTTP/catalog test requires three private preset songs that are absent locally; do not synthesize production media to remove the skip. The new navigation harness tests actual production functions with host-only boundary stubs. Device logs and their limits are in [historical November 1 evidence](docs/HARDWARE_TEST_20261101.md); they do not establish audible continuity or long-running/cross-network acceptance.
 
 ## Documentation and Local Delivery
 
@@ -76,3 +76,7 @@ Include:
 - any remaining unverified hardware item
 
 Keep asset licensing clear. Do not attach protected media or firmware images that embed protected media.
+
+## Current verification (2026-11-03)
+
+Formal version is 1.2.1. The Linux wrapper uses isolated build_linux_repo/sdkconfig and repository defaults. Every build checks configuration and generated web-page integrity with tools/check_sdkconfig.py and tools/check_web_ui.py. tests/test_eva_radio_player.py extracts the production loop and covers jitter, recovery, EOF and errors; test_build_config.py and test_web_ui_generation.py cover the guards. Current host regression is 47 passed, 0 failed; see [November 3 evidence](docs/HARDWARE_TEST_20261103.md) for actual device coverage.

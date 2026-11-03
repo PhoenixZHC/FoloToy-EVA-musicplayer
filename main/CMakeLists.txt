@@ -45,3 +45,17 @@ idf_component_register(
     EMBED_FILES "../assets/audio/startup.adpcm"
     EMBED_TXTFILES "eva_radio_setup.html"
 )
+# 放在组件注册后，避开 ESP-IDF 仅收集依赖的早期脚本阶段。
+add_custom_target(eva_web_ui_check
+    COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/../tools/check_web_ui.py"
+    VERBATIM
+)
+add_dependencies(${COMPONENT_LIB} eva_web_ui_check)
+
+# 包括直接 idf.py build 在内，所有构建都必须符合仓库配置。
+add_custom_target(eva_sdkconfig_check
+    COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/../tools/check_sdkconfig.py"
+        --defaults "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults" --config "${SDKCONFIG}"
+    VERBATIM
+)
+add_dependencies(${COMPONENT_LIB} eva_sdkconfig_check)

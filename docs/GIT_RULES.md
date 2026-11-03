@@ -107,3 +107,7 @@ assets/promo/*.png
 ## 当前电台版提交边界
 
 公开 docs/README.md、docs/EVA_RADIO.md、docs/HARDWARE_TEST_20261101.md 的当前说明与验收摘要；docs/HARDWARE_TEST_20261030.md 保留为历史；原始串口日志、音源检查报告、旧设备Flash备份、字体/生成物、启动音和固件继续留在忽略目录。本轮完整 BIN、SHA-256、打包报告与交付说明仅保存在被忽略的 release/，不从设备整片备份生成公开固件。CONTEXT.md只在本机同步，不强制加入Git。main/idf_component.yml记录解码依赖版本；managed_components和dependencies.lock沿用现有忽略规则。
+
+## Formal 1.2.1 delivery (2026-11-03)
+
+Version metadata, configuration/page checks, production-loop tests and sanitized documentation belong in source control. Full BINs, checksum/report companions and delivery notes stay under ignored release/. Do not add private media, generated fonts/pages, device backups or raw serial logs. Source commits and pushes require an explicit user request. Publishing source does not authorize uploading complete BINs or redistributing embedded assets.
