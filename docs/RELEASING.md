@@ -2,6 +2,18 @@
 
 Use this checklist before publishing the project or attaching build artifacts.
 
+## Current delivery: 1.2.2 (2026-11-10)
+
+Adds Nantong traffic FM92.9 and music FM91.8, bringing the catalog to 20 cities / 91 stations. Existing station records and partition layout are unchanged. Both new MP3 streams passed host sampling (HTTP 200, audio/mpeg, eight complete consecutive frames, 64 kbps; 32 kHz / 44.1 kHz respectively). No device flash or playback test was performed this time.
+
+ESP-IDF 5.5.4 repository-config build/size passed. App: 2,000,144 bytes; free app space: 97,008 bytes; static DRAM remaining: 112,422 bytes. Thirteen relevant Python tests and one C catalog program passed. Build warns that the app partition is nearly full (5% remaining).
+
+Full image: `release/FoloToy-EVA-1.2.2-full-8MB-20261110.bin`, 8,388,608 bytes, ESP32-C3 / 8MB / DIO / 80MHz, offset `0x0`. Built from matching `build_linux_repo/` bootloader, partition table and app. Version, segment byte comparisons and blank NVS/PHY/music checks passed. **Flashing this complete image replaces songs and settings.** Local `.sha256`, `.json` and `交付说明-1.2.2.txt` accompany the image; all remain Git-ignored.
+
+SHA256: `898fff8214cb1c6f3a3953f89a392c2f41aee9a15e11ccbd88c4bd48c6d7ff34`.
+
+The 1.2.1 and earlier sections below retain their original historical evidence.
+
 ## Source Release
 
 Before pushing to a public repository:
@@ -41,7 +53,7 @@ main/web_ui.h
 release/*.bin
 ```
 
-## Current Local Application (2026-11-03)
+## Historical Local Application: 1.2.1 (2026-11-03)
 
 Build on the Ubuntu workstation with `.venv/bin/python tools/idf_linux.py build size`. This uses repository `sdkconfig.defaults`, an explicit ESP32-C3 target and a build-local `sdkconfig` under `build_linux_repo/`; every build checks declared defaults. Do not use the root historical config or earlier build directories for current delivery.
 
@@ -57,7 +69,7 @@ Review staged source/docs and the destination branch, then push without force. K
 
 ## Build Release
 
-Only publish a full firmware image when every embedded asset can be redistributed. The current source identifies itself as formal release `1.2.1`; development suffixes are removed.
+Only publish a full firmware image when every embedded asset can be redistributed. The current source identifies itself as formal release `1.2.2`; development suffixes are removed.
 
 The merged image layout is:
 
@@ -68,11 +80,11 @@ The merged image layout is:
 | `0x10000` | application |
 | `0x210000` | writable music FAT partition (populated in preset-song packages) |
 
-### Current Formal Full Image (2026-11-03)
+### Historical Formal Full Image: 1.2.1 (2026-11-03)
 
 Formal full image: `release/FoloToy-EVA-1.2.1-full-8MB-20261103.bin`, 8,388,608 bytes, ESP32-C3 / 8MB / DIO / 80MHz, flash at `0x0`. Bootloader, partition table and 1.2.1 application come from the same build_linux_repo/ build. Component, version and blank-region checks passed. NVS, PHY and music are 0xFF, without user credentials or songs; embedded startup audio and UI fonts remain. **Full flashing replaces existing songs and settings.** This image was not flashed. The BIN and same-name SHA256/JSON companions stay Git-ignored. SHA256: `0974a5164f1dd115d597bb728bc9a7b3e542865fdd684656a0d49d87db0c4ac9`.
 
-### Reproduce the clean formal image on this Ubuntu workstation
+### Historical 1.2.1 merge command on this Ubuntu workstation
 
 After a successful repository-config build, use the active ESP-IDF Python environment. Choose a new output name if the delivery already exists; this command only merges files and does not flash the device.
 
@@ -85,7 +97,7 @@ After a successful repository-config build, use the active ESP-IDF Python enviro
   0x10000 build_linux_repo/FoloToy-AI-Passport.bin
 ~~~
 
-The current application SHA256 is 0fa700783de55353602be54307ee7c26f499779b434b131df258ae8b835ea8de. Use only the matching build inputs. The complete BIN, .sha256, .json and 交付说明-1.2.1.txt stay under ignored release/.
+The historical 1.2.1 application SHA256 is 0fa700783de55353602be54307ee7c26f499779b434b131df258ae8b835ea8de. Use only the matching build inputs. The complete BIN, .sha256, .json and 交付说明-1.2.1.txt stay under ignored release/.
 
 ### Historical Local Full Image (2026-11-01)
 

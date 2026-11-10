@@ -20,6 +20,7 @@ static const eva_radio_city_t s_cities[] = {
     { .id = 19, .name = "宁波", .display_name = "NINGBO" },
     { .id = 20, .name = "无锡", .display_name = "WUXI" },
     { .id = 21, .name = "沈阳", .display_name = "SHENYANG" },
+    { .id = 22, .name = "南通", .display_name = "NANTONG" },
 };
 
 /* 2026-10-30 宿主机取样：HTTP 200、audio/mpeg、至少8个连续MP3帧。
@@ -114,6 +115,12 @@ static const eva_radio_station_t s_stations[] = {
     { 88, 21, "沈阳音乐广播 路上好朋友", "RADIO 1101", "音乐", "http://lhttp.qingting.fm/live/1101/64k.mp3", "https://github.com/qist/tvbox/blob/master/radio.txt", "2026-10-30", 64, EVA_RADIO_CODEC_MP3 },
     { 89, 21, "沈阳新民广播FM103.9", "RADIO 5022535", "综合", "http://lhttp.qingting.fm/live/5022535/64k.mp3", "https://github.com/qist/tvbox/blob/master/radio.txt", "2026-10-30", 64, EVA_RADIO_CODEC_MP3 },
     { 90, 21, "沈阳新闻广播", "RADIO 20024", "新闻", "http://lhttp.qingting.fm/live/20024/64k.mp3", "https://github.com/qist/tvbox/blob/master/radio.txt", "2026-10-30", 64, EVA_RADIO_CODEC_MP3 },
+    /* 2026-11-10 主机取样：HTTP 200、audio/mpeg、连续8帧，64 kbps / 32 kHz。
+       台名及频率来自 Radio Browser 公开目录，未替代实机试听验收。 */
+    { 91, 22, "南通交通广播 FM92.9", "NANTONG TRAFFIC FM92.9", "交通", "http://lhttp.qingting.fm/live/5021533/64k.mp3", "https://www.radio-browser.info/history/b835f0e1-cb93-4caf-ad5a-4684d02023be", "2026-11-10", 64, EVA_RADIO_CODEC_MP3 },
+    /* 2026-11-10 主机取样：HTTP 200、audio/mpeg、连续8帧，64 kbps / 44.1 kHz。
+       蜻蜓搜索目录确认为南通音乐广播；旧公开目录中的平台编号已失效。 */
+    { 92, 22, "南通音乐广播 FM91.8", "NANTONG MUSIC FM91.8", "音乐", "http://lhttp.qingting.fm/live/21275/64k.mp3", "https://www.qingting.fm/search/all/%E5%8D%97%E9%80%9A91.8", "2026-11-10", 64, EVA_RADIO_CODEC_MP3 },
 };
 
 size_t eva_radio_city_count(void)
